@@ -1,0 +1,20 @@
+[Unit]
+Description=gta-ai Qwen3.6 vLLM inference server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+UMask=0002
+ExecStartPre=-/usr/bin/podman rm --force --time 10 gta-ai-vllm
+ExecStart=/opt/gta-ai/bin/run-vllm
+ExecStop=-/usr/bin/podman stop --time 120 gta-ai-vllm
+Restart=on-failure
+RestartSec=15
+TimeoutStartSec=1800
+TimeoutStopSec=180
+StandardOutput=append:/opt/gta-ai/logs/vllm.log
+StandardError=append:/opt/gta-ai/logs/vllm.log
+
+[Install]
+WantedBy=default.target

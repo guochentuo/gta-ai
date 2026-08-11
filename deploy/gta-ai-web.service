@@ -1,0 +1,19 @@
+[Unit]
+Description=gta-ai browser interface and API
+Wants=network-online.target
+After=network-online.target gta-ai-vllm.service
+
+[Service]
+Type=simple
+UMask=0002
+WorkingDirectory=/opt/gta-ai/app
+EnvironmentFile=/opt/gta-ai/config/gta-ai-web.env
+ExecStart=/opt/gta-ai/app/.venv/bin/gta-ai
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+StandardOutput=append:/opt/gta-ai/logs/web.log
+StandardError=append:/opt/gta-ai/logs/web.log
+
+[Install]
+WantedBy=default.target
