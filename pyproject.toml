@@ -9,6 +9,7 @@ description = "Internal AI analysis and decision-support service for GTA."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+  "confluent-kafka>=2.6,<4",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "openai>=1.68,<3",
@@ -26,6 +27,8 @@ dev = [
 
 [project.scripts]
 gta-ai = "gta_ai.__main__:main"
+gta-ai-router = "gta_ai.inference_router:main"
+gta-ai-idle-trainer = "gta_ai.idle_trainer:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gta_ai"]
@@ -41,4 +44,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
-

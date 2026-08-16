@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -16,6 +16,9 @@ class LocalGenerationRequest(StrictModel):
     messages: list[ModelMessage] = Field(min_length=1)
     max_tokens: int = Field(default=2048, ge=1, le=32768)
     temperature: float = Field(default=0.2, ge=0, le=2)
+    enable_thinking: bool = False
+    response_format: dict[str, Any] | None = None
+    priority: Literal["P1", "P9"] = "P1"
 
 
 class LocalGenerationResponse(StrictModel):
@@ -23,3 +26,6 @@ class LocalGenerationResponse(StrictModel):
     model: str = Field(min_length=1)
     content: str
     finish_reason: str | None = None
+    prompt_tokens: int | None = Field(default=None, ge=0)
+    completion_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)

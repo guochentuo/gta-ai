@@ -12,8 +12,8 @@ ExecStart=/opt/gta-ai/app/.venv/bin/gta-ai
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
-StandardOutput=append:/opt/gta-ai/logs/web.log
-StandardError=append:/opt/gta-ai/logs/web.log
+StandardOutput=append:/opt/gta-ai/logs/gta.ai.web.log
+StandardError=append:/opt/gta-ai/logs/gta.ai.web.log
 
 [Install]
 WantedBy=default.target

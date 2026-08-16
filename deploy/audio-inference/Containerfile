@@ -1,0 +1,10 @@
+ARG BASE_IMAGE=localhost/gta-ai-image-embedding:1.1.0
+FROM ${BASE_IMAGE}
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY app.py /opt/gta-ai-audio-events/app.py
+ENTRYPOINT ["python", "/opt/gta-ai-audio-events/app.py"]

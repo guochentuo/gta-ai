@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -15,6 +17,9 @@ async def test_probe_and_generate_use_openai_compatible_local_api() -> None:
                 json={"data": [{"id": "Qwen/Qwen3.6-27B-FP8"}]},
             )
         if request.url.path == "/v1/chat/completions":
+            payload = json.loads(request.content)
+            assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+            assert request.headers["x-gta-priority"] == "P1"
             return httpx.Response(
                 200,
                 json={

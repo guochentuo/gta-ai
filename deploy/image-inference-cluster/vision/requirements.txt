@@ -1,0 +1,8 @@
+fastapi==0.116.1
+uvicorn==0.35.0
+python-multipart==0.0.20
+Pillow==11.3.0
+transformers==4.53.2
+safetensors==0.5.3
+huggingface-hub==0.33.4
+

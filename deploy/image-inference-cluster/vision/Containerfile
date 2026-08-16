@@ -1,0 +1,21 @@
+FROM docker.io/library/python@sha256:86adf8dbadc3d6e82ee5dd2c74bec2e1c2467cdad47886280501df722372d2e1
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /tmp/requirements.txt
+
+RUN python -m pip install --no-cache-dir \
+      --index-url https://download.pytorch.org/whl/cpu \
+      torch==2.7.1 \
+    && python -m pip install --no-cache-dir -r /tmp/requirements.txt
+
+COPY app.py /app/app.py
+
+WORKDIR /app
+ENTRYPOINT ["python", "-m", "uvicorn", "app:app"]

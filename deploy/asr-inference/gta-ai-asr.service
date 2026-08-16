@@ -1,0 +1,27 @@
+[Unit]
+Description=GTA faster-whisper ASR Service
+Wants=network-online.target
+After=network-online.target gta-ai-vllm.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+SupplementaryGroups=video render
+EnvironmentFile=/opt/gta-ai-asr/asr.env
+Environment="LD_LIBRARY_PATH=/opt/gta-ai/data/asr/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:/opt/gta-ai/data/asr/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib"
+ExecStart=/opt/gta-ai/data/asr/.venv/bin/python /opt/gta-ai-asr/app.py --host ${ASR_HOST} --port ${ASR_PORT}
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=600
+TimeoutStopSec=30
+CPUQuota=800%
+MemoryHigh=12G
+MemoryMax=16G
+MemorySwapMax=0
+Nice=5
+TasksMax=1024
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

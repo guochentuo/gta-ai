@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "assistant_name_zh": "小梦",
+  "assistant_name_en": "Xiaomeng",
+  "brand_zh": "绿色旅行网",
+  "brand_en": "GreenTourAsia",
+  "companies": [
+    "亚洲绿色旅游服务公司",
+    "南京绿色旅行社有限公司"
+  ],
+  "small_group_equivalents": [
+    "小包团",
+    "私人旅行团",
+    "私人定制旅行"
+  ],
+  "small_group_definition": "在绿色旅行网业务语境中，小包团、私人旅行团和私人定制旅行完全等同，指亲友独立成团、不与陌生游客拼团，并可按客人需求定制的私人旅行服务。"
+}

@@ -29,10 +29,15 @@ class LocalModelClient:
         self._settings = settings
         self._transport = transport
 
-    def _headers(self) -> dict[str, str]:
-        if self._settings.local_llm_api_key is None:
-            return {}
-        return {"Authorization": (f"Bearer {self._settings.local_llm_api_key.get_secret_value()}")}
+    def _headers(self, priority: str | None = None) -> dict[str, str]:
+        headers: dict[str, str] = {}
+        if self._settings.local_llm_api_key is not None:
+            headers["Authorization"] = (
+                f"Bearer {self._settings.local_llm_api_key.get_secret_value()}"
+            )
+        if priority:
+            headers["X-GTA-Priority"] = priority
+        return headers
 
     async def probe(self) -> ProviderHealth:
         started = perf_counter()
@@ -75,13 +80,16 @@ class LocalModelClient:
             "messages": [message.model_dump(mode="json") for message in request.messages],
             "max_tokens": request.max_tokens,
             "temperature": request.temperature,
+            "chat_template_kwargs": {"enable_thinking": request.enable_thinking},
         }
+        if request.response_format is not None:
+            payload["response_format"] = request.response_format
         try:
             timeout = httpx.Timeout(self._settings.local_llm_timeout_seconds)
             async with httpx.AsyncClient(
                 timeout=timeout,
                 transport=self._transport,
-                headers=self._headers(),
+                headers=self._headers(request.priority),
             ) as client:
                 response = await client.post(
                     self._settings.local_llm_url("chat/completions"), json=payload
@@ -93,6 +101,7 @@ class LocalModelClient:
             content = choice["message"]["content"]
             if not isinstance(content, str):
                 raise TypeError("local model returned non-text content")
+            usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
             return LocalGenerationResponse(
                 model=str(body.get("model") or self._settings.local_llm_model),
                 content=content,
@@ -101,6 +110,9 @@ class LocalModelClient:
                     if choice.get("finish_reason") is not None
                     else None
                 ),
+                prompt_tokens=usage.get("prompt_tokens"),
+                completion_tokens=usage.get("completion_tokens"),
+                total_tokens=usage.get("total_tokens"),
             )
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             raise LocalModelError(f"local model request failed: {type(exc).__name__}") from exc

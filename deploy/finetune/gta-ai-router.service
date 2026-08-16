@@ -1,0 +1,18 @@
+[Unit]
+Description=gta-ai stable inference router
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+UMask=0002
+EnvironmentFile=/opt/gta-ai/config/router.env
+ExecStart=/opt/gta-ai/app/.venv/bin/gta-ai-router
+Restart=always
+RestartSec=1
+TimeoutStopSec=30
+StandardOutput=append:/opt/gta-ai/logs/gta.ai.router.log
+StandardError=append:/opt/gta-ai/logs/gta.ai.router.log
+
+[Install]
+WantedBy=default.target

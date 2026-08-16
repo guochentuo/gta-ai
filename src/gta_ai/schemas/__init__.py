@@ -1,3 +1,4 @@
+from gta_ai.schemas.audit import MediaAuditAccepted, MediaAuditRequest, MediaAuditState
 from gta_ai.schemas.chat import (
     BrowserChatMessage,
     BrowserChatRequest,
@@ -14,6 +15,7 @@ from gta_ai.schemas.decision import (
     RecommendedAction,
 )
 from gta_ai.schemas.health import HealthState, ProviderHealth, ServiceHealth
+from gta_ai.schemas.material_search import MaterialSearchRequest, MaterialSearchResult
 from gta_ai.schemas.model import LocalGenerationRequest, LocalGenerationResponse, ModelMessage
 
 __all__ = [
@@ -29,6 +31,11 @@ __all__ = [
     "Hypothesis",
     "LocalGenerationRequest",
     "LocalGenerationResponse",
+    "MaterialSearchRequest",
+    "MaterialSearchResult",
+    "MediaAuditAccepted",
+    "MediaAuditRequest",
+    "MediaAuditState",
     "MetricFact",
     "ModelMessage",
     "ProviderHealth",

@@ -1,25 +1,39 @@
 # gta-ai
 
-Independent Python 3.12 service for local AI analysis and OpenAI-assisted final decisions.
+`gta-ai` 是独立的 Python 3.12 AI 分析与决策服务，与 `gta-worker` 解耦。当前主要包含：
 
-This repository is intentionally isolated from `gta-worker` and currently contains only:
+- 本地 OpenAI 兼容模型客户端；
+- OpenAI Responses API 最终决策客户端；
+- 严格的 Pydantic 请求与结果结构；
+- 健康检查、浏览器聊天页面和离线测试；
+- Java 提交的异步图片/视频审核、ES 结果缓存和 HMAC 结果回调；
+- Java 通过 `/v1/material-search` 使用的素材只读混合检索适配器；
+- Qwen3.6 推理、LoRA 身份微调及推理优先的可抢占调度。
 
-- environment-based configuration;
-- an OpenAI-compatible local model client;
-- an OpenAI Responses API final-decision client;
-- strict Pydantic request and decision schemas;
-- liveness and readiness endpoints;
-- offline unit tests with mocked model clients.
+服务永远不连接 TiDB/MySQL，也不持有数据库账号。素材审核只允许访问 ES、Ceph、Kafka
+和模型端点；只有 Java 能在签名回调事务中更新素材业务状态。
 
-Google Ads, databases, Redis, Elasticsearch, Kafka and Ceph are deliberately not connected in
-this phase.
+Java 不连接 ES。无关键词的素材管理列表直接读取 TiDB；关键词检索由 Java 调用
+`POST /v1/material-search`，ES 凭据、索引名、Qwen 查询向量和查询 DSL 全部封装在
+`gta-ai` 内。`gta-projection` 仍是素材 ES 投影的写入者。
 
-The root page is a self-contained browser chat interface. It supports streamed responses,
-thinking mode, multiple image uploads, and browser-local conversation history. The browser calls
-`/api/chat`; that endpoint proxies requests to the loopback-only vLLM service, so port 8000 never
-needs to be exposed to the LAN.
+## 素材审核接口
 
-## Development
+Java 使用 Bearer token 调用 `POST /v1/media-audits`，删除或重新提交时调用
+`DELETE /v1/media-audits/{request_id}`。请求只携带素材 ID、代次、输入指纹和 ES/Ceph
+定位信息，不携带数据库连接信息。
+
+审核完成后，`gta-ai` 覆盖 `gta_media_content_audit` 中同一素材的 V1 文档，再调用 Java
+的 `/internal/material-ai-audits/completed`。回调签名为：
+
+```text
+hex(HMAC-SHA256(callback_secret, timestamp + "\n" + raw_json_body))
+```
+
+Java 校验签名和五分钟时间窗后，才在本地事务内写 TiDB。回调失败不会伪造完成状态；Java
+会把失联的 RUNNING 请求重新提交，相同输入优先命中 ES 缓存。
+
+## 本地开发
 
 ```bash
 python3 -m venv .venv
@@ -29,90 +43,80 @@ cp .env.example .env
 .venv/bin/gta-ai
 ```
 
-The default API listens on `127.0.0.1:8080`.
+默认 API 监听 `127.0.0.1:8080`：
 
 ```bash
 curl http://127.0.0.1:8080/health/live
 curl http://127.0.0.1:8080/health/ready
 ```
 
-`/health/live` never calls an external service. `/health/ready` probes only the configured local
-model endpoint and reports whether the OpenAI key is configured; it does not call OpenAI.
+`/health/live` 不调用外部服务；`/health/ready` 只探测配置的本地模型，并检查 OpenAI
+密钥是否已配置，不会真正调用 OpenAI。
 
-## Tests
+## 测试
 
 ```bash
 .venv/bin/ruff check .
 .venv/bin/pytest
 ```
 
-All tests use in-process fakes or HTTP mock transports and do not contact model providers.
+单元测试使用进程内假服务或 HTTP Mock，不会调用真实模型提供商。
 
-## Deployment boundary
+## 部署目录
 
-- Source and tests: `/code/gta/gta-ai`
-- Release deployment: `/opt/gta-ai`
-- Model files: `/opt/gta-ai/models`
-- Runtime data: `/opt/gta-ai/data`
-- Runtime logs: `/opt/gta-ai/logs`
+- 源码与测试：`/code/gta/gta-ai`
+- 运行部署：`/opt/gta-ai`
+- 模型：`/opt/gta-ai/models`
+- 运行数据：`/opt/gta-ai/data`
+- 日志：`/opt/gta-ai/logs`
+- 微调数据与适配器：`/opt/gta-ai/training`
 
-## GPU inference runtime
+## GPU 推理
 
-The host uses rootless Podman with NVIDIA CDI. The installed runtime versions and pinned vLLM
-image digest are recorded in `deploy/runtime-versions.env`.
+宿主机使用 rootless Podman 和 NVIDIA CDI。运行版本及固定的 vLLM 镜像摘要记录在
+`deploy/runtime-versions.env`。
 
 ```bash
 /opt/gta-ai/bin/verify-gpu
 /opt/gta-ai/bin/verify-vllm
-```
-
-Persistent paths are mounted explicitly from `/opt/gta-ai`:
-
-- model weights: `/opt/gta-ai/models/Qwen3.6-27B-FP8`;
-- Hugging Face cache: `/opt/gta-ai/data/cache/huggingface`;
-- vLLM compile cache: `/opt/gta-ai/data/cache/vllm`;
-- future Qdrant storage: `/opt/gta-ai/data/qdrant`.
-
-The first model-server profile uses a 32K context window, one sequence, FP8 KV cache, and an
-initial GPU memory utilization limit of 0.82. Runtime files are deployed under `/opt/gta-ai`:
-
-```bash
-/opt/gta-ai/bin/run-vllm
 systemctl --user status gta-ai-vllm.service
 curl http://127.0.0.1:8000/v1/models
 ```
 
-The model server listens only on `127.0.0.1:8000` and exposes the OpenAI-compatible API.
+基础模型为 `/opt/gta-ai/models/Qwen3.6-27B-FP8`。vLLM 后端只监听
+`127.0.0.1:18086`，稳定入口 `127.0.0.1:8000` 由推理路由提供；现有调用方不需要改端口。
 
-The user service is intentionally started on demand instead of enabled at boot, so training can
-own the full GPU when inference is not needed:
+## 空闲微调与请求抢占
+
+身份知识使用 QLoRA 写入模型适配器权重，训练数据中没有 system 消息。运行规则如下：
+
+1. 只有存在尚未部署、经过确认的训练版本，并且连续空闲 15 分钟时，才停止 vLLM 并开始训练；
+2. 任意新的 `/v1/*` 推理请求到达后，路由先登记请求，调度器在 250 毫秒轮询周期内终止整组训练进程；
+3. vLLM 恢复后，等待中的原请求继续执行；冷恢复耗时取决于模型加载速度；
+4. 被抢占的训练保留 checkpoint，下次满足空闲条件后续训；
+5. 新适配器必须通过无 system 消息的固定验收集，失败时不会切换线上权重；
+6. 相同训练版本只执行一次，不会使用在线请求或模型回答自动自我训练。
+
+状态与日志：
 
 ```bash
-systemctl --user start gta-ai-vllm.service
-systemctl --user stop gta-ai-vllm.service
-systemctl --user status gta-ai-vllm.service
-tail -f /opt/gta-ai/logs/vllm.log
+cat /opt/gta-ai/training/runtime/router-state.json
+cat /opt/gta-ai/training/runtime/trainer-state.json
+cat /opt/gta-ai/training/runtime/deployed.json
+tail -f /opt/gta-ai/logs/identity-training-*.log
 ```
 
-A full cold start includes multimodal memory profiling and takes about four minutes on this host.
-The local model client timeout is 600 seconds so a 2K-token thinking response is not cut off at the
-HTTP layer.
+## 浏览器页面
 
-## Browser interface
-
-The deployed Web service listens on port 8080. It is independent of the GPU-backed vLLM service:
-the page remains available while inference is stopped, and its status indicator reports when the
-model becomes ready.
+浏览器服务默认监听 `8080`。它与 GPU 推理服务独立；推理停止时页面仍可打开，但模型恢复前不会返回答案。
 
 ```bash
+systemctl --user start gta-ai-web.service
 systemctl --user status gta-ai-web.service
-systemctl --user restart gta-ai-web.service
 tail -f /opt/gta-ai/logs/web.log
 ```
 
-## Model acceptance
+## 模型验收
 
-The reproducible phase-4 harness is in `acceptance/`. The completed server run is stored at
-`/opt/gta-ai/data/acceptance/phase4-20260808T105232Z/REPORT.md`. It covers structured Chinese
-analysis, article review and generation, multimodal inputs, tool calling, a 31K-token prompt,
-continuous requests, NVENC coexistence and service lifecycle behavior.
+可重复的模型验收程序位于 `acceptance/`。身份适配器另使用
+`training/identity/evaluate_identity.py`，强制只发送单条 user 消息，防止把上下文注入误判成权重微调成功。
