@@ -6,7 +6,7 @@ After=network-online.target
 [Service]
 Type=simple
 ExecStartPre=-/usr/bin/podman rm --force gta-ai-embedding
-ExecStart=/opt/gta-ai-embedding/bin/run-embedding
+ExecStart=/opt/gta-ai/embedding/bin/run-embedding
 ExecStop=-/usr/bin/podman stop --time 30 gta-ai-embedding
 Restart=on-failure
 RestartSec=15

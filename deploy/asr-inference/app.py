@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-from collections import deque
-from contextlib import contextmanager
 import difflib
 import hashlib
 import json
@@ -11,15 +9,21 @@ import tempfile
 import threading
 import time
 import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections import deque
+from contextlib import contextmanager, suppress
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from faster_whisper import WhisperModel
-
+from faster_whisper.audio import decode_audio
+from faster_whisper.vad import VadOptions, get_speech_timestamps
 
 SERVICE_NAME = "gta-ai-asr"
-SERVICE_VERSION = "1.2.0"
+SERVICE_VERSION = "1.3.0"
 MODEL_NAME = os.getenv("ASR_MODEL", "Systran/faster-whisper-large-v3")
 MODEL_CACHE = os.getenv("ASR_MODEL_CACHE", "/opt/gta-ai/data/cache/faster-whisper")
 DEVICE = os.getenv("ASR_DEVICE", "cuda")
@@ -41,13 +45,21 @@ CONDITION_ON_PREVIOUS_TEXT = os.getenv(
     "ASR_CONDITION_ON_PREVIOUS_TEXT", "false"
 ).strip().lower() in ("1", "true", "yes", "on")
 MAX_AUDIO_BYTES = int(os.getenv("ASR_MAX_AUDIO_BYTES", str(256 * 1024 * 1024)))
+SPEECH_GATE_MINIMUM_SEC = float(os.getenv("ASR_SPEECH_GATE_MINIMUM_SEC", "0.8"))
+GPU_ADMISSION_ENABLED = os.getenv("ASR_GPU_ADMISSION_ENABLED", "true").lower() == "true"
+GPU_ADMISSION_ENDPOINT = os.getenv(
+    "ASR_GPU_ADMISSION_ENDPOINT", "http://192.168.80.7:8000/_gta/admission"
+).rstrip("/")
+GPU_ADMISSION_MEMORY_MB = int(os.getenv("ASR_GPU_ADMISSION_MEMORY_MB", "6144"))
+GPU_ADMISSION_WAIT_SECONDS = int(os.getenv("ASR_GPU_ADMISSION_WAIT_SECONDS", "1800"))
+GPU_ADMISSION_TTL_SECONDS = int(os.getenv("ASR_GPU_ADMISSION_TTL_SECONDS", "1800"))
 
 _model: WhisperModel | None = None
 _model_lock = threading.Lock()
 
 
 class PriorityInferenceGate:
-    """单 GPU 串行推理门禁；P0/P1 始终排在尚未开始的 P9 前面。"""
+    """单 GPU 串行推理门禁; P0/P1 始终排在尚未开始的 P9 前面。"""
 
     def __init__(self) -> None:
         self._condition = threading.Condition()
@@ -87,6 +99,76 @@ class PriorityInferenceGate:
 _inference_gate = PriorityInferenceGate()
 
 
+class GpuAdmissionClient:
+    def __init__(self, endpoint: str) -> None:
+        self.endpoint = endpoint
+
+    def _json_request(self, request: urllib.request.Request) -> dict[str, Any]:
+        with urllib.request.urlopen(request, timeout=GPU_ADMISSION_WAIT_SECONDS + 10) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @contextmanager
+    def lease(self, priority: str):
+        if not GPU_ADMISSION_ENABLED or DEVICE != "cuda":
+            yield
+            return
+        historical = priority.strip().upper() == "P9"
+        owner = f"asr:{os.getpid()}:{threading.get_ident()}:{time.time_ns()}"
+        body = json.dumps(
+            {
+                "owner": owner,
+                "workload_class": (
+                    "HISTORICAL_FEATURE" if historical else "REALTIME_FEATURE"
+                ),
+                "requested_memory_mb": GPU_ADMISSION_MEMORY_MB,
+                "ttl_seconds": GPU_ADMISSION_TTL_SECONDS,
+                "wait_seconds": GPU_ADMISSION_WAIT_SECONDS,
+            }
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.endpoint}/leases",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        lease = self._json_request(request)
+        lease_id = str(lease["lease_id"])
+        stopping = threading.Event()
+
+        def heartbeat() -> None:
+            interval = max(5, GPU_ADMISSION_TTL_SECONDS // 3)
+            while not stopping.wait(interval):
+                heartbeat_request = urllib.request.Request(
+                    f"{self.endpoint}/leases/{lease_id}/heartbeat",
+                    data=json.dumps(
+                        {"owner": owner, "ttl_seconds": GPU_ADMISSION_TTL_SECONDS}
+                    ).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with suppress(OSError, ValueError, urllib.error.URLError):
+                    self._json_request(heartbeat_request)
+                    # The active inference remains safe until the original TTL.
+                    # A missing heartbeat is visible in admission state and logs.
+
+        heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
+        heartbeat_thread.start()
+        try:
+            yield
+        finally:
+            stopping.set()
+            heartbeat_thread.join(timeout=2)
+            query = urllib.parse.urlencode({"owner": owner})
+            release_request = urllib.request.Request(
+                f"{self.endpoint}/leases/{lease_id}?{query}", method="DELETE"
+            )
+            with suppress(OSError, ValueError, urllib.error.URLError):
+                self._json_request(release_request)
+
+
+_admission_client = GpuAdmissionClient(GPU_ADMISSION_ENDPOINT)
+
+
 def get_model() -> WhisperModel:
     global _model
     if _model is not None:
@@ -111,7 +193,7 @@ def decode(audio_path: str, language: str | None, chunk_length_sec: int) -> dict
         word_timestamps=True,
         vad_filter=True,
         # 每个窗口独立解码。旅游视频中持续背景音乐会让 VAD 认为整条音轨
-        # 都是语音；继承前一窗口文本时，一次错误很容易扩散成后续重复幻觉。
+        # 都是语音; 继承前一窗口文本时, 一次错误很容易扩散成后续重复幻觉。
         condition_on_previous_text=CONDITION_ON_PREVIOUS_TEXT,
         chunk_length=chunk_length_sec,
     )
@@ -148,6 +230,47 @@ def decode(audio_path: str, language: str | None, chunk_length_sec: int) -> dict
         "durationAfterVadSec": round(float(info.duration_after_vad), 3),
         "text": "\n".join(texts),
         "segments": segments,
+    }
+
+
+def speech_gate(audio_path: str) -> dict[str, Any]:
+    """Run Silero VAD without loading or invoking the Whisper model."""
+
+    started = time.perf_counter()
+    audio = decode_audio(audio_path, sampling_rate=16000)
+    timestamps = get_speech_timestamps(
+        audio,
+        VadOptions(
+            threshold=0.5,
+            min_speech_duration_ms=250,
+            min_silence_duration_ms=500,
+            speech_pad_ms=100,
+        ),
+        sampling_rate=16000,
+    )
+    speech_seconds = sum(
+        max(0, int(item["end"]) - int(item["start"])) / 16000.0
+        for item in timestamps
+    )
+    duration_seconds = len(audio) / 16000.0
+    return {
+        "status": "speech" if speech_seconds >= SPEECH_GATE_MINIMUM_SEC else "no_speech",
+        "gate": "silero_vad",
+        "sampleRate": 16000,
+        "durationSec": round(duration_seconds, 3),
+        "speechSec": round(speech_seconds, 3),
+        "speechRatio": round(speech_seconds / duration_seconds, 6)
+        if duration_seconds > 0.0
+        else 0.0,
+        "minimumSpeechSec": SPEECH_GATE_MINIMUM_SEC,
+        "intervals": [
+            {
+                "start": round(int(item["start"]) / 16000.0, 3),
+                "end": round(int(item["end"]) / 16000.0, 3),
+            }
+            for item in timestamps
+        ],
+        "elapsedMs": round((time.perf_counter() - started) * 1000, 3),
     }
 
 
@@ -253,7 +376,7 @@ def transcribe(
     audio_path: str, language: str | None, priority: str = "P1"
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    with _inference_gate.acquire(priority):
+    with _admission_client.lease(priority), _inference_gate.acquire(priority):
         primary = decode(audio_path, language, CHUNK_LENGTH_SEC)
         second = (
             decode(audio_path, language, VERIFY_CHUNK_LENGTH_SEC)
@@ -294,11 +417,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        try:
+        with suppress(BrokenPipeError, ConnectionResetError):
             self.wfile.write(body)
-        except (BrokenPipeError, ConnectionResetError):
-            # Worker 被停止时客户端会主动断开；推理结果无需再回写，也不应污染服务日志。
-            pass
+            # Worker 被停止时客户端会主动断开; 推理结果无需再回写, 也不应污染服务日志。
 
     def do_GET(self) -> None:
         if self.path != "/health":
@@ -325,7 +446,8 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def do_POST(self) -> None:
-        if self.path.split("?", 1)[0] != "/v1/transcriptions":
+        route = self.path.split("?", 1)[0]
+        if route not in ("/v1/transcriptions", "/v1/speech-gate"):
             self.send_json(HTTPStatus.NOT_FOUND, {"detail": "not found"})
             return
 
@@ -344,7 +466,9 @@ class Handler(BaseHTTPRequestHandler):
         language = None if language_header in ("", "auto") else language_header
         temp_path = ""
         try:
-            with tempfile.NamedTemporaryFile(prefix="gta-asr-", suffix=".flac", delete=False) as temp:
+            with tempfile.NamedTemporaryFile(
+                prefix="gta-asr-", suffix=".flac", delete=False
+            ) as temp:
                 temp_path = temp.name
                 remaining = content_length
                 while remaining > 0:
@@ -353,20 +477,21 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("音频请求体不完整")
                     temp.write(chunk)
                     remaining -= len(chunk)
-            priority = self.headers.get("X-GTA-Priority", "P1")
-            self.send_json(
-                HTTPStatus.OK, transcribe(temp_path, language, priority)
-            )
+            if route == "/v1/speech-gate":
+                self.send_json(HTTPStatus.OK, speech_gate(temp_path))
+            else:
+                priority = self.headers.get("X-GTA-Priority", "P1")
+                self.send_json(
+                    HTTPStatus.OK, transcribe(temp_path, language, priority)
+                )
         except ValueError as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"detail": str(error)})
         except Exception as error:
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"detail": str(error)})
         finally:
             if temp_path:
-                try:
+                with suppress(FileNotFoundError):
                     os.unlink(temp_path)
-                except FileNotFoundError:
-                    pass
 
 
 def main() -> None:

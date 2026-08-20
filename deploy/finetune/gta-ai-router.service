@@ -6,13 +6,13 @@ After=network-online.target
 [Service]
 Type=simple
 UMask=0002
-EnvironmentFile=/opt/gta-ai/config/router.env
-ExecStart=/opt/gta-ai/app/.venv/bin/gta-ai-router
+EnvironmentFile=/opt/gta-ai/router/config/router.env
+ExecStart=/usr/bin/python3 /opt/gta-ai/router/bin/json-log-runner.py --service gta-ai --module Router --log-file /opt/gta-ai/logs/gta.ai.router.jsonl --max-size-mb 20 --backups 10 -- /opt/gta-ai/router/bin/run-router
 Restart=always
 RestartSec=1
 TimeoutStopSec=30
-StandardOutput=append:/opt/gta-ai/logs/gta.ai.router.log
-StandardError=append:/opt/gta-ai/logs/gta.ai.router.log
+StandardOutput=null
+StandardError=journal
 
 [Install]
 WantedBy=default.target

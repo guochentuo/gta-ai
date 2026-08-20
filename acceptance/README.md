@@ -1,24 +1,8 @@
-# Phase 4 acceptance harness
+# 模型验收程序
 
-These scripts validate the local Qwen/vLLM deployment without connecting Google Ads, databases,
-Redis or Elasticsearch and without changing `gta-worker`.
+该目录保留永久离线/受控验收脚本。普通单元测试不得连接数据库、ES、Kafka、正式模型或
+正式对象存储，也不得停止/重启 systemd 服务。
 
-Run against an already-ready model service:
-
-```bash
-result_root=/opt/gta-ai/data/acceptance/manual-run
-mkdir -p "$result_root/media" "$result_root/results"
-
-acceptance/build_media.sh "$result_root/media"
-.venv/bin/python acceptance/content_tests.py "$result_root/results"
-.venv/bin/python acceptance/vision_tests.py "$result_root/media" "$result_root/results"
-.venv/bin/python acceptance/long_context_test.py "$result_root/results"
-.venv/bin/python acceptance/stress_test.py "$result_root/results" --requests 20
-.venv/bin/python acceptance/tool_call_test.py "$result_root/results"
-.venv/bin/python acceptance/service_cycle_test.py "$result_root/results"
-```
-
-The lifecycle test intentionally stops and restarts `gta-ai-vllm.service`. A complete run takes
-several minutes because every start includes multimodal profiling. The NVENC coexistence test is
-kept as an explicit operator step so it cannot accidentally start a hardware encoder during a
-routine content-only acceptance run.
+需要真实模型的压力、长上下文或服务生命周期测试必须由运维显式批准，并把输出放入临时
+隔离目录；验收后删除临时结果。`service_cycle_test.py` 会改变模型服务状态，禁止纳入常规
+构建发布门禁。

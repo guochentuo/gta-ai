@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import threading
 import time
@@ -10,7 +11,7 @@ from typing import Any
 
 import httpx
 
-API_BASE = "http://127.0.0.1:8000"
+API_BASE = os.getenv("GTA_AI_ROUTER_BASE_URL", "http://192.168.80.7:8000")
 MODEL = "Qwen/Qwen3.6-27B-FP8"
 
 

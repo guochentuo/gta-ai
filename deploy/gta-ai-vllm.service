@@ -7,14 +7,14 @@ After=network-online.target
 Type=simple
 UMask=0002
 ExecStartPre=-/usr/bin/podman rm --force --time 0 gta-ai-vllm
-ExecStart=/opt/gta-ai/bin/run-vllm
+ExecStart=/usr/bin/python3 /opt/gta-ai/router/bin/json-log-runner.py --service gta-ai --module VLLM --log-file /opt/gta-ai/logs/gta.ai.vllm.jsonl --max-size-mb 20 --backups 10 -- /opt/gta-ai/27b/bin/run-vllm
 ExecStop=-/usr/bin/podman rm --force --time 0 gta-ai-vllm
 Restart=on-failure
 RestartSec=15
 TimeoutStartSec=1800
 TimeoutStopSec=30
-StandardOutput=append:/opt/gta-ai/logs/gta.ai.vllm.log
-StandardError=append:/opt/gta-ai/logs/gta.ai.vllm.log
+StandardOutput=null
+StandardError=journal
 
 [Install]
 WantedBy=default.target

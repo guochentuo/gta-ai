@@ -22,6 +22,7 @@ RUN python -m pip install --no-cache-dir \
     && python -m pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY app.py /app/app.py
+COPY risk_regions.py /app/risk_regions.py
 
 WORKDIR /app
 ENTRYPOINT ["python", "-m", "uvicorn", "app:app"]

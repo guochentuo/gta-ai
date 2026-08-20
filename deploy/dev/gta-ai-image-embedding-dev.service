@@ -1,18 +1,19 @@
 [Unit]
-Description=GTA SigLIP2 CPU Image Embedding Service
+Description=GTA Dev SigLIP2 CPU Image Embedding Service
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=simple
+WorkingDirectory=/opt/gta-ai/siglip
+Environment="GTA_AI_CONFIG_FILES=/opt/gta-ai/siglip/config/vision.dev.env"
 ExecStartPre=-/usr/bin/podman rm --force gta-ai-image-embedding
-ExecStart=/opt/gta-ai/siglip/bin/run-vision
+ExecStart=/usr/bin/python3 /opt/gta-ai/bin/json-log-runner.py --service gta-ai --module SigLIP2 --log-file /opt/gta-ai/logs/gta.ai.siglip.dev.jsonl --max-size-mb 20 --backups 10 -- /opt/gta-ai/bin/run-vision
 ExecStop=-/usr/bin/podman stop --time 30 gta-ai-image-embedding
 Restart=on-failure
 RestartSec=15
 TimeoutStartSec=1800
 TimeoutStopSec=60
-
 CPUQuota=2400%
 CPUWeight=20
 MemoryHigh=14G
@@ -23,7 +24,9 @@ Nice=10
 OOMScoreAdjust=500
 TasksMax=2048
 LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gta-ai-image-embedding-dev
 
 [Install]
 WantedBy=multi-user.target
-

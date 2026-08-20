@@ -8,7 +8,13 @@ from pathlib import Path
 import httpx
 import pytest
 
-from gta_ai.inference_router import PriorityWorkloadGate, RouterConfig, create_router_app
+from gta_ai.inference_router import (
+    LeaseAcquireRequest,
+    PersistentGpuAdmission,
+    PriorityWorkloadGate,
+    RouterConfig,
+    create_router_app,
+)
 
 
 class _MockStream(httpx.AsyncByteStream):
@@ -42,6 +48,20 @@ async def test_priority_gate_runs_realtime_before_waiting_history() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cancelled_priority_waiter_is_removed_immediately() -> None:
+    gate = PriorityWorkloadGate(1)
+    await gate.acquire(9)
+    waiting = asyncio.create_task(gate.acquire(9))
+    await asyncio.sleep(0)
+    assert (await gate.snapshot())["historical_waiting"] == 1
+    waiting.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+    assert (await gate.snapshot())["historical_waiting"] == 0
+    await gate.release()
+
+
+@pytest.mark.asyncio
 async def test_router_forwards_request_bytes_without_identity_injection(tmp_path: Path) -> None:
     captured: list[bytes] = []
 
@@ -60,6 +80,7 @@ async def test_router_forwards_request_bytes_without_identity_injection(tmp_path
         backend_url="http://backend",
         state_path=tmp_path / "state.json",
         gpu_lock_path=tmp_path / "gpu.lock",
+        admission_db_path=tmp_path / "admission.sqlite3",
         wake_timeout_seconds=1,
         backend_poll_seconds=0.01,
     )
@@ -93,6 +114,7 @@ async def test_router_records_workload_lifecycle(tmp_path: Path) -> None:
             backend_url="http://backend",
             state_path=state_path,
             gpu_lock_path=tmp_path / "gpu.lock",
+            admission_db_path=tmp_path / "admission.sqlite3",
         ),
         transport=httpx.MockTransport(handler),
     )
@@ -124,6 +146,7 @@ async def test_request_registers_active_before_waiting_for_training_lock(tmp_pat
             backend_url="http://backend",
             state_path=state_path,
             gpu_lock_path=lock_path,
+            admission_db_path=tmp_path / "admission.sqlite3",
         ),
         transport=httpx.MockTransport(handler),
     )
@@ -141,3 +164,214 @@ async def test_request_registers_active_before_waiting_for_training_lock(tmp_pat
             assert response.content == b"done"
     finally:
         training_lock.close()
+
+
+@pytest.mark.asyncio
+async def test_explicit_request_cancel_releases_all_router_state(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json={"data": []})
+        return httpx.Response(200, stream=_MockStream(b"done"))
+
+    lock_path = tmp_path / "gpu.lock"
+    lock_path.touch()
+    training_lock = lock_path.open("a+")
+    fcntl.flock(training_lock, fcntl.LOCK_EX)
+    app = create_router_app(
+        RouterConfig(
+            backend_url="http://backend",
+            state_path=tmp_path / "state.json",
+            gpu_lock_path=lock_path,
+            admission_db_path=tmp_path / "admission.sqlite3",
+            request_timeout_seconds=5,
+        ),
+        transport=httpx.MockTransport(handler),
+        memory_provider=lambda: (1000, 8000),
+    )
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://router"
+        ) as client:
+            pending = asyncio.create_task(
+                client.post(
+                    "/v1/chat/completions",
+                    content=b"{}",
+                    headers={"X-GTA-Request-ID": "task:cancel-me"},
+                )
+            )
+            await asyncio.sleep(0)
+            for _ in range(50):
+                state = (await client.get("/_gta/runtime")).json()
+                if state["tracked_requests"] == 1:
+                    break
+                await asyncio.sleep(0.01)
+            duplicate = await client.post(
+                "/v1/chat/completions",
+                content=b"{}",
+                headers={"X-GTA-Request-ID": "task:cancel-me"},
+            )
+            assert duplicate.status_code == 409
+            cancelled = await client.delete("/_gta/requests/task:cancel-me")
+            assert cancelled.json() == {
+                "request_id": "task:cancel-me",
+                "cancelled": True,
+            }
+            response = await asyncio.wait_for(pending, timeout=1)
+            assert response.status_code == 499
+            assert (await client.delete("/_gta/requests/task:cancel-me")).json()[
+                "cancelled"
+            ] is False
+            state = (await client.get("/_gta/runtime")).json()
+            admission = (await client.get("/_gta/admission")).json()
+            assert state["active_requests"] == 0
+            assert state["active_workloads"] == 0
+            assert state["tracked_requests"] == 0
+            assert state["historical_waiting"] == 0
+            assert admission["leases"] == []
+            assert admission["waiters"] == []
+    finally:
+        fcntl.flock(training_lock, fcntl.LOCK_UN)
+        training_lock.close()
+
+
+@pytest.mark.asyncio
+async def test_gpu_lease_survives_manager_restart_and_expires(tmp_path: Path) -> None:
+    database = tmp_path / "admission.sqlite3"
+    manager = PersistentGpuAdmission(
+        database,
+        poll_seconds=0.01,
+        minimum_free_mb=100,
+        memory_provider=lambda: (1000, 8000),
+    )
+    lease = await manager.acquire(
+        LeaseAcquireRequest(
+            owner="worker:feature:1",
+            workload_class="REALTIME_FEATURE",
+            requested_memory_mb=2000,
+            ttl_seconds=5,
+        )
+    )
+    restarted = PersistentGpuAdmission(
+        database,
+        poll_seconds=0.01,
+        minimum_free_mb=100,
+        memory_provider=lambda: (1000, 8000),
+    )
+    snapshot = await restarted.snapshot()
+    assert [item["lease_id"] for item in snapshot["leases"]] == [lease["lease_id"]]
+    assert await restarted.release(str(lease["lease_id"]), "worker:feature:1")
+    assert (await restarted.snapshot())["leases"] == []
+
+
+@pytest.mark.asyncio
+async def test_realtime_waiter_runs_before_historical_waiter(tmp_path: Path) -> None:
+    manager = PersistentGpuAdmission(
+        tmp_path / "admission.sqlite3",
+        poll_seconds=0.01,
+        minimum_free_mb=100,
+        memory_provider=lambda: (42000, 4000),
+    )
+    active = await manager.acquire(
+        LeaseAcquireRequest(
+            owner="active:understanding",
+            workload_class="REALTIME_UNDERSTANDING",
+            ttl_seconds=30,
+        )
+    )
+    order: list[str] = []
+
+    async def acquire_named(name: str, workload_class: str) -> dict[str, object]:
+        lease = await manager.acquire(
+            LeaseAcquireRequest(
+                owner=name,
+                workload_class=workload_class,
+                ttl_seconds=30,
+                wait_seconds=2,
+            )
+        )
+        order.append(name)
+        return lease
+
+    historical = asyncio.create_task(
+        acquire_named("history", "HISTORICAL_UNDERSTANDING")
+    )
+    await asyncio.sleep(0.02)
+    realtime = asyncio.create_task(
+        acquire_named("realtime", "REALTIME_UNDERSTANDING")
+    )
+    await asyncio.sleep(0.02)
+    await manager.release(str(active["lease_id"]), "active:understanding")
+    realtime_lease = await asyncio.wait_for(realtime, timeout=1)
+    assert order == ["realtime"]
+    await manager.release(str(realtime_lease["lease_id"]), "realtime")
+    historical_lease = await asyncio.wait_for(historical, timeout=1)
+    assert order == ["realtime", "history"]
+    await manager.release(str(historical_lease["lease_id"]), "history")
+
+
+@pytest.mark.asyncio
+async def test_admission_http_contract_rejects_unknown_class(tmp_path: Path) -> None:
+    app = create_router_app(
+        RouterConfig(
+            backend_url="http://backend",
+            state_path=tmp_path / "state.json",
+            gpu_lock_path=tmp_path / "gpu.lock",
+            admission_db_path=tmp_path / "admission.sqlite3",
+        ),
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={})),
+        memory_provider=lambda: (1000, 8000),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://router"
+    ) as client:
+        bad = await client.post(
+            "/_gta/admission/leases",
+            json={"owner": "worker:1", "workload_class": "UNKNOWN"},
+        )
+        assert bad.status_code == 422
+        good = await client.post(
+            "/_gta/admission/leases",
+            json={
+                "owner": "worker:1",
+                "workload_class": "REALTIME_FEATURE",
+                "requested_memory_mb": 1000,
+            },
+        )
+        assert good.status_code == 200
+        lease = good.json()
+        released = await client.delete(
+            f"/_gta/admission/leases/{lease['lease_id']}",
+            params={"owner": "worker:1"},
+        )
+        assert released.json() == {"released": True}
+
+
+@pytest.mark.asyncio
+async def test_single_gpu_admission_never_runs_nvenc_whisper_or_27b_together(
+    tmp_path: Path,
+) -> None:
+    manager = PersistentGpuAdmission(
+        tmp_path / "admission.sqlite3",
+        poll_seconds=0.01,
+        minimum_free_mb=2048,
+        maximum_active=1,
+        memory_provider=lambda: (36591, 8870),
+    )
+    playback = await manager.acquire(
+        LeaseAcquireRequest(
+            owner="nvenc:1",
+            workload_class="REALTIME_PLAYBACK",
+            requested_memory_mb=1024,
+            ttl_seconds=30,
+        )
+    )
+    with pytest.raises(TimeoutError):
+        await manager.acquire(
+            LeaseAcquireRequest(
+                owner="whisper:1",
+                workload_class="REALTIME_FEATURE",
+                requested_memory_mb=6144,
+                ttl_seconds=30,
+            )
+        )
+    await manager.release(str(playback["lease_id"]), "nvenc:1")

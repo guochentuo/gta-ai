@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -36,7 +37,11 @@ def service_property(service: str, name: str, *, user: bool = False) -> str:
 
 def api_ready() -> bool:
     try:
-        response = httpx.get("http://127.0.0.1:8000/v1/models", timeout=2)
+        response = httpx.get(
+            os.getenv("GTA_AI_ROUTER_BASE_URL", "http://192.168.80.7:8000")
+            + "/v1/models",
+            timeout=2,
+        )
         response.raise_for_status()
         model = response.json()["data"][0]
         return model["id"] == "Qwen/Qwen3.6-27B-FP8" and model["max_model_len"] == 32768

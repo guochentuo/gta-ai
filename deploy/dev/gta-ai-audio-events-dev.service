@@ -1,0 +1,32 @@
+[Unit]
+Description=GTA Dev AudioSet AST CPU Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/gta-ai/ast
+Environment="GTA_AI_CONFIG_FILES=/opt/gta-ai/ast/config/audio-events.dev.env"
+ExecStartPre=-/usr/bin/podman rm --force gta-ai-audio-events
+ExecStart=/usr/bin/python3 /opt/gta-ai/bin/json-log-runner.py --service gta-ai --module AST --log-file /opt/gta-ai/logs/gta.ai.ast.dev.jsonl --max-size-mb 20 --backups 10 -- /opt/gta-ai/bin/run-audio-events
+ExecStop=-/usr/bin/podman stop --time 30 gta-ai-audio-events
+Restart=on-failure
+RestartSec=15
+TimeoutStartSec=1800
+TimeoutStopSec=60
+CPUQuota=800%
+CPUWeight=20
+MemoryHigh=6G
+MemoryMax=8G
+MemorySwapMax=0
+IOWeight=20
+Nice=10
+OOMScoreAdjust=500
+TasksMax=1024
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gta-ai-audio-events-dev
+
+[Install]
+WantedBy=multi-user.target

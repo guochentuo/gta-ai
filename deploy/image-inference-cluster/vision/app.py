@@ -35,6 +35,7 @@ MAX_IMAGE_PIXELS = int(os.getenv("VISION_MAX_IMAGE_PIXELS", "50000000"))
 MAX_IMAGE_BATCH = int(os.getenv("VISION_MAX_IMAGE_BATCH", "8"))
 MAX_TEXT_BATCH = int(os.getenv("VISION_MAX_TEXT_BATCH", "32"))
 MASK_POLICY = "original_with_subtitle_patch_attention_mask_v1"
+ORIGINAL_POLICY = "original_image_v1"
 MAX_MASK_BOXES_PER_IMAGE = 32
 MAX_EXCLUDED_PATCH_RATIO = 0.40
 
@@ -194,7 +195,7 @@ def apply_subtitle_patch_masks(
             raise HTTPException(status_code=400, detail="字幕框排除的视觉patch比例过高")
         statistics.append(
             {
-                "policy": MASK_POLICY,
+                "policy": MASK_POLICY if boxes else ORIGINAL_POLICY,
                 "box_count": len(boxes),
                 "valid_patch_count": before,
                 "excluded_patch_count": excluded,
@@ -204,7 +205,9 @@ def apply_subtitle_patch_masks(
     return statistics
 
 
-def embedding_input_sha256(content: bytes, boxes: list[list[float]]) -> str:
+def embedding_input_sha256(
+    content: bytes, boxes: list[list[float]], input_policy: str
+) -> str:
     digest = hashlib.sha256()
     digest.update(content)
     digest.update(b"\0")
@@ -212,7 +215,7 @@ def embedding_input_sha256(content: bytes, boxes: list[list[float]]) -> str:
     digest.update(b"\0")
     digest.update(MODEL_REVISION.encode("utf-8"))
     digest.update(b"\0")
-    digest.update(MASK_POLICY.encode("utf-8"))
+    digest.update(input_policy.encode("utf-8"))
     digest.update(b"\0")
     digest.update(json.dumps(boxes, separators=(",", ":")).encode("utf-8"))
     return digest.hexdigest()
@@ -309,6 +312,7 @@ async def image_embeddings(
     images = [decode_image(content) for content in contents]
     masks = parse_subtitle_masks(subtitle_masks, len(images))
     started = time.perf_counter()
+    input_policy = MASK_POLICY if any(masks) else ORIGINAL_POLICY
     vectors, mask_statistics = await asyncio.to_thread(
         embed_images, images, masks, request.headers.get("X-GTA-Priority")
     )
@@ -319,14 +323,16 @@ async def image_embeddings(
         "revision": MODEL_REVISION,
         "dimensions": _dimensions,
         "normalized": True,
-        "input_policy": MASK_POLICY,
+        "input_policy": input_policy,
         "data": [
             {
                 "object": "embedding",
                 "index": index,
                 "embedding": vector,
                 "source_sha256": hashlib.sha256(contents[index]).hexdigest(),
-                "embedding_input_sha256": embedding_input_sha256(contents[index], masks[index]),
+                "embedding_input_sha256": embedding_input_sha256(
+                    contents[index], masks[index], input_policy
+                ),
                 "width": images[index].width,
                 "height": images[index].height,
                 "subtitle_patch_mask": mask_statistics[index],

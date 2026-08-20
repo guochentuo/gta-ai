@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStartPre=-/usr/bin/podman rm --force gta-ai-audio-events
-ExecStart=/opt/gta-ai-audio-events/bin/run-audio-events
+ExecStart=/opt/gta-ai/ast/bin/run-audio-events
 ExecStop=-/usr/bin/podman stop --time 30 gta-ai-audio-events
 Restart=on-failure
 RestartSec=15

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     port: int = Field(default=8080, ge=1, le=65535)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
-    local_llm_base_url: AnyHttpUrl = "http://127.0.0.1:8000/v1"
+    local_llm_base_url: AnyHttpUrl = "http://192.168.80.7:8000/v1"
     local_llm_model: str = "Qwen/Qwen3.6-27B-FP8"
     local_llm_api_key: SecretStr | None = None
     local_llm_timeout_seconds: float = Field(default=600, gt=0, le=3600)

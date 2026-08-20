@@ -6,6 +6,7 @@ import heapq
 import importlib.metadata
 import io
 import os
+import re
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
@@ -16,9 +17,11 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from paddleocr import PaddleOCR
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from risk_regions import detect_candidate_regions
+
 
 SERVICE_NAME = "gta-ai-ocr"
-SERVICE_VERSION = "1.1.0"
+SERVICE_VERSION = "1.2.0"
 DETECTION_MODEL = os.getenv("OCR_DETECTION_MODEL", "PP-OCRv6_medium_det")
 RECOGNITION_MODEL = os.getenv("OCR_RECOGNITION_MODEL", "PP-OCRv6_medium_rec")
 CPU_THREADS = int(os.getenv("OCR_CPU_THREADS", "8"))
@@ -184,6 +187,151 @@ def ocr_payload(content: bytes, image: Image.Image, lines: list[dict[str, Any]])
     }
 
 
+def _translate_line(line: dict[str, Any], left: int, top: int) -> dict[str, Any]:
+    translated = dict(line)
+    box = translated.get("box")
+    if isinstance(box, list) and len(box) == 4:
+        translated["box"] = [
+            float(box[0]) + left,
+            float(box[1]) + top,
+            float(box[2]) + left,
+            float(box[3]) + top,
+        ]
+    polygon = translated.get("polygon")
+    if isinstance(polygon, list):
+        translated["polygon"] = [
+            [float(point[0]) + left, float(point[1]) + top]
+            for point in polygon
+            if isinstance(point, list) and len(point) >= 2
+        ]
+    return translated
+
+
+_RISK_TEXT = re.compile(
+    r"(?:https?://|www\.|[a-z0-9][a-z0-9.-]+\.(?:com|cn|net|org)|"
+    r"(?:\+?86[- ]?)?1[3-9]\d{9}|(?:0\d{2,3}[- ]?)?\d{7,8}|"
+    r"(?:电话|手机|热线|联系|客服|微信|扫码|二维码|二维码))",
+    re.IGNORECASE,
+)
+
+
+def _crop_signature(image: Image.Image, box: list[int]) -> np.ndarray:
+    left, top, right, bottom = box
+    crop = image.crop((left, top, right, bottom)).resize((16, 16)).convert("L")
+    return np.asarray(crop, dtype=np.float32)
+
+
+def _temporally_stable_regions(
+    images: list[Image.Image], region_sets: list[list[dict[str, Any]]]
+) -> set[tuple[int, int]]:
+    """Find unchanged overlay crops in at least three timeline samples.
+
+    Geometry alone is insufficient: bottom subtitles and changing scene text
+    must not become fixed-watermark candidates.
+    """
+
+    stable: set[tuple[int, int]] = set()
+    entries: list[tuple[int, int, float, float, float, float, np.ndarray]] = []
+    for image_index, (image, regions) in enumerate(zip(images, region_sets)):
+        width, height = image.size
+        for region_index, region in enumerate(regions):
+            if region.get("reason") != "overlay_text_geometry":
+                continue
+            box = [int(value) for value in region["box"]]
+            entries.append(
+                (
+                    image_index,
+                    region_index,
+                    box[0] / width,
+                    box[1] / height,
+                    box[2] / width,
+                    box[3] / height,
+                    _crop_signature(image, box),
+                )
+            )
+    for entry in entries:
+        matches = []
+        for other in entries:
+            if entry[0] == other[0]:
+                continue
+            geometry_delta = max(abs(entry[pos] - other[pos]) for pos in range(2, 6))
+            pixel_delta = float(np.mean(np.abs(entry[6] - other[6])))
+            if geometry_delta <= 0.035 and pixel_delta <= 9.0:
+                matches.append(other)
+        distinct_frames = {entry[0], *(match[0] for match in matches)}
+        if len(distinct_frames) >= 3:
+            stable.add((entry[0], entry[1]))
+            stable.update((match[0], match[1]) for match in matches)
+    return stable
+
+
+def run_risk_screen_batch(
+    images: list[Image.Image],
+    contents: list[bytes],
+    priority_header: str | None,
+) -> list[dict[str, Any]]:
+    """Detect cheap candidate crops, then OCR only those crops.
+
+    There is intentionally no fallback to full-frame OCR in this path.  Strict
+    full-timeline OCR remains available through /v1/ocr-batch.
+    """
+
+    region_sets = [detect_candidate_regions(image) for image in images]
+    stable_regions = _temporally_stable_regions(images, region_sets)
+    crops: list[Image.Image] = []
+    crop_owners: list[tuple[int, int, int]] = []
+    for image_index, (image, regions) in enumerate(zip(images, region_sets)):
+        for region_index, region in enumerate(regions):
+            left, top, right, bottom = [int(value) for value in region["box"]]
+            if right <= left or bottom <= top:
+                continue
+            crops.append(image.crop((left, top, right, bottom)))
+            crop_owners.append((image_index, region_index, len(crops) - 1))
+
+    crop_lines: list[list[dict[str, Any]]] = []
+    for begin in range(0, len(crops), MAX_BATCH_SIZE):
+        crop_lines.extend(
+            run_ocr_batch(crops[begin : begin + MAX_BATCH_SIZE], priority_header)
+        )
+
+    lines_by_image: list[list[dict[str, Any]]] = [[] for _ in images]
+    confirmed_regions: list[list[dict[str, Any]]] = [[] for _ in images]
+    ocr_crop_counts = [0 for _ in images]
+    for image_index, region_index, crop_index in crop_owners:
+        ocr_crop_counts[image_index] += 1
+        left, top, _, _ = [
+            int(value) for value in region_sets[image_index][region_index]["box"]
+        ]
+        lines = [_translate_line(line, left, top) for line in crop_lines[crop_index]]
+        region = dict(region_sets[image_index][region_index])
+        reason = str(region.get("reason", ""))
+        text_match = any(_RISK_TEXT.search(str(line.get("text", ""))) for line in lines)
+        qr_match = reason == "qr_like_geometry"
+        fixed_match = (image_index, region_index) in stable_regions
+        if not text_match and not qr_match and not fixed_match:
+            continue
+        if text_match:
+            region["reason"] = "risk_text_pattern"
+        elif fixed_match:
+            region["reason"] = "fixed_overlay_candidate"
+        else:
+            region["reason"] = "qr_candidate"
+        confirmed_regions[image_index].append(region)
+        lines_by_image[image_index].extend(lines)
+
+    return [
+        {
+            "index": index,
+            **ocr_payload(contents[index], image, lines_by_image[index]),
+            "candidate_regions": confirmed_regions[index],
+            "prefilter_region_count": len(region_sets[index]),
+            "ocr_crop_count": ocr_crop_counts[index],
+            "ocr_scope": "candidate_regions_only",
+        }
+        for index, image in enumerate(images)
+    ]
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global _engine
@@ -266,5 +414,33 @@ async def ocr_batch(
         "model": f"{DETECTION_MODEL}+{RECOGNITION_MODEL}",
         "count": len(items),
         "items": items,
+        "elapsed_ms": elapsed_ms,
+    }
+
+
+@app.post("/v1/risk-screen-batch")
+async def risk_screen_batch(
+    request: Request, files: list[UploadFile] = File(...)
+) -> dict[str, Any]:
+    if not files or len(files) > MAX_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"风险筛查图片数量必须在1到{MAX_BATCH_SIZE}之间",
+        )
+    contents = [await file.read(MAX_IMAGE_BYTES + 1) for file in files]
+    images = [decode_image(content) for content in contents]
+    started = time.perf_counter()
+    items = await asyncio.to_thread(
+        run_risk_screen_batch,
+        images,
+        contents,
+        request.headers.get("X-GTA-Priority"),
+    )
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+    return {
+        "model": f"lightweight-region-detector+{DETECTION_MODEL}+{RECOGNITION_MODEL}",
+        "count": len(items),
+        "items": items,
+        "ocr_scope": "candidate_regions_only",
         "elapsed_ms": elapsed_ms,
     }

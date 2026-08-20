@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly common_config=/opt/gta-ai-ocr/config/ocr.env
-readonly node_config=/opt/gta-ai-ocr/config/node.env
+readonly default_config_files=/opt/gta-ai/ocr/config/ocr.env,/opt/gta-ai/ocr/config/node.env
+IFS=',' read -r -a config_files <<<"${GTA_AI_CONFIG_FILES:-$default_config_files}"
 
-for config_file in "$common_config" "$node_config"; do
+for config_file in "${config_files[@]}"; do
   if [[ ! -r "$config_file" ]]; then
     echo "缺少可读配置文件：$config_file" >&2
     exit 1
@@ -12,9 +12,10 @@ for config_file in "$common_config" "$node_config"; do
 done
 
 # shellcheck disable=SC1090
-source "$common_config"
-# shellcheck disable=SC1090
-source "$node_config"
+for config_file in "${config_files[@]}"; do
+  # shellcheck disable=SC1090
+  source "$config_file"
+done
 
 required_variables=(
   OCR_IMAGE OCR_PORT OCR_DATA_DIR OCR_DETECTION_MODEL OCR_RECOGNITION_MODEL

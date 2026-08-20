@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 
-config_file=/opt/gta-ai/config/vllm.env
+config_file=/opt/gta-ai/27b/config/vllm.env
 
 if [ ! -r "$config_file" ]; then
     echo "Missing readable configuration: $config_file" >&2
@@ -39,11 +39,12 @@ exec /usr/bin/podman run --rm \
     --device nvidia.com/gpu=all \
     --security-opt=label=disable \
     --ipc=host \
+    --log-driver=none \
     --publish "$VLLM_HOST:$VLLM_PORT:8000" \
     --volume "$VLLM_MODEL_PATH:/models/Qwen3.6-27B-FP8:ro" \
     "${adapter_volume[@]}" \
-    --volume /opt/gta-ai/data/cache/huggingface:/root/.cache/huggingface:rw \
-    --volume /opt/gta-ai/data/cache/vllm:/root/.cache/vllm:rw \
+    --volume /opt/gta-ai/27b/data/cache/huggingface:/root/.cache/huggingface:rw \
+    --volume /opt/gta-ai/27b/data/cache/vllm:/root/.cache/vllm:rw \
     "$VLLM_IMAGE" \
     /models/Qwen3.6-27B-FP8 \
     --served-model-name "$served_model_name" \

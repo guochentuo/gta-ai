@@ -1,18 +1,19 @@
 [Unit]
-Description=GTA PaddleOCR CPU Service
+Description=GTA Dev PaddleOCR CPU Service
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=simple
+WorkingDirectory=/opt/gta-ai/ocr
+Environment="GTA_AI_CONFIG_FILES=/opt/gta-ai/ocr/config/ocr.dev.env"
 ExecStartPre=-/usr/bin/podman rm --force gta-ai-ocr
-ExecStart=/opt/gta-ai/ocr/bin/run-ocr
+ExecStart=/usr/bin/python3 /opt/gta-ai/bin/json-log-runner.py --service gta-ai --module OCR --log-file /opt/gta-ai/logs/gta.ai.ocr.dev.jsonl --max-size-mb 20 --backups 10 -- /opt/gta-ai/bin/run-ocr
 ExecStop=-/usr/bin/podman stop --time 30 gta-ai-ocr
 Restart=on-failure
 RestartSec=15
 TimeoutStartSec=1800
 TimeoutStopSec=60
-
 CPUQuota=800%
 CPUWeight=20
 MemoryHigh=12G
@@ -23,7 +24,9 @@ Nice=10
 OOMScoreAdjust=500
 TasksMax=2048
 LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gta-ai-ocr-dev
 
 [Install]
 WantedBy=multi-user.target
-
