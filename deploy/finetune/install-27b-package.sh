@@ -18,6 +18,9 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 (cd "$ROOT" && sha256sum -c SHA256SUMS)
 sudo install -d -o ubuntu -g ubuntu -m 0755 \
   /opt/gta-ai/27b/{bin,config} /opt/gta-ai/router/{bin,config,state} /opt/gta-ai/logs
+sudo find /opt/gta-ai/27b/bin /opt/gta-ai/27b/config \
+  /opt/gta-ai/router/bin /opt/gta-ai/router/config \
+  -mindepth 1 -maxdepth 1 -type f -delete
 sudo install -o root -g root -m 0755 "$ROOT/27b/bin/run-vllm" /opt/gta-ai/27b/bin/
 sudo install -o root -g root -m 0644 "$ROOT/27b/config/vllm.env" /opt/gta-ai/27b/config/
 sudo install -o root -g root -m 0755 "$ROOT/router/bin/"* /opt/gta-ai/router/bin/
@@ -29,5 +32,7 @@ sudo install -o ubuntu -g ubuntu -m 0644 "$ROOT/router/src/gta_ai/"*.py \
   "$SITE_PACKAGES/gta_ai/"
 sudo install -o root -g root -m 0644 "$ROOT/27b/systemd/gta-ai-vllm.service" /etc/systemd/system/
 sudo install -o root -g root -m 0644 "$ROOT/router/systemd/gta-ai-router.service" /etc/systemd/system/
+sudo install -o ubuntu -g ubuntu -m 0644 "$ROOT/README.md" \
+  "$ROOT/RELEASE-MANIFEST.json" "$ROOT/SHA256SUMS" /opt/gta-ai/
 sudo systemctl daemon-reload
 echo "27B/router已安装；未启动、未下载权重、未修改模型参数"

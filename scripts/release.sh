@@ -5,6 +5,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGE_ROOT="${PACKAGE_ROOT:-$ROOT/release}"
 STAMP="$(date -u +%Y%m%d_%H%M%S)"
 REV="$(git -C "$ROOT" rev-parse HEAD)"
+SOURCE_STATE_HASH="$({
+  git -C "$ROOT" status --porcelain=v1 --untracked-files=all
+  git -C "$ROOT" diff --binary HEAD -- .
+  while IFS= read -r path; do
+    printf '%s\0' "$path"
+    sha256sum "$ROOT/$path"
+  done < <(git -C "$ROOT" ls-files --others --exclude-standard | LC_ALL=C sort)
+} | sha256sum | awk '{print $1}')"
 ARCHIVE="gta-ai-${STAMP}-${REV:0:12}.tar.gz"
 mkdir -p "$PACKAGE_ROOT"
 STAGING="$(mktemp -d "$PACKAGE_ROOT/.gta-ai.XXXXXX")"
@@ -41,7 +49,7 @@ install -m 0644 "$ROOT/src/gta_ai/__init__.py" "$ROOT/src/gta_ai/inference_route
   "$PKG/router/src/gta_ai/"
 install -m 0755 "$ROOT/deploy/finetune/install-27b-package.sh" "$PKG/"
 cat > "$PKG/RELEASE-MANIFEST.json" <<EOF
-{"schemaVersion":1,"project":"gta-ai","gitRevision":"$REV","gitState":"$([[ -n "$(git -C "$ROOT" status --porcelain)" ]] && echo dirty || echo clean)","buildTimeUtc":"$STAMP","installRoot":"/opt/gta-ai","deploymentSource":"verified-project-package-only","weightsIncluded":false}
+{"schemaVersion":2,"project":"gta-ai","gitRevision":"$REV","gitState":"$([[ -n "$(git -C "$ROOT" status --porcelain)" ]] && echo dirty || echo clean)","sourceStateHash":"$SOURCE_STATE_HASH","buildTimeUtc":"$STAMP","installRoot":"/opt/gta-ai","deploymentSource":"verified-project-package-only","weightsIncluded":false}
 EOF
 (cd "$PKG" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
 tar -C "$STAGING" --owner=0 --group=0 --numeric-owner -czf "$PACKAGE_ROOT/$ARCHIVE" gta-ai
