@@ -9,6 +9,18 @@ import app
 
 
 class SpeechGateTest(unittest.TestCase):
+    def test_known_channel_watermark_hallucination_is_filtered_exactly(self) -> None:
+        self.assertTrue(
+            app.is_known_hallucination(
+                "优优独播剧场——YoYo Television Series Exclusive"
+            )
+        )
+        self.assertFalse(
+            app.is_known_hallucination(
+                "优优独播剧场正在介绍西塘古镇"
+            )
+        )
+
     def test_silence_skips_whisper_model(self) -> None:
         with tempfile.TemporaryDirectory(prefix="gta-asr-gate-") as directory:
             path = os.path.join(directory, "silence.wav")

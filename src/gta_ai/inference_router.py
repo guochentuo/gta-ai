@@ -238,7 +238,7 @@ class PersistentGpuAdmission:
     def _class_limit(workload_class: str) -> int:
         if workload_class in {"REALTIME_UNDERSTANDING", "HISTORICAL_UNDERSTANDING"}:
             return 1
-        if workload_class == "REALTIME_PLAYBACK":
+        if workload_class in {"REALTIME_PLAYBACK", "HISTORICAL_FEATURE"}:
             return 2
         return 1
 

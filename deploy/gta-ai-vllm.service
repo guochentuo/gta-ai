@@ -1,5 +1,5 @@
 [Unit]
-Description=gta-ai Qwen3.6 vLLM inference server
+Description=gta-ai Qwen3.8 vLLM inference server
 Wants=network-online.target
 After=network-online.target
 

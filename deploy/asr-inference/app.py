@@ -29,6 +29,9 @@ MODEL_CACHE = os.getenv("ASR_MODEL_CACHE", "/opt/gta-ai/data/cache/faster-whispe
 DEVICE = os.getenv("ASR_DEVICE", "cuda")
 COMPUTE_TYPE = os.getenv("ASR_COMPUTE_TYPE", "int8_float16")
 BEAM_SIZE = int(os.getenv("ASR_BEAM_SIZE", "5"))
+CPU_THREADS = int(os.getenv("ASR_CPU_THREADS", "32"))
+NUM_WORKERS = int(os.getenv("ASR_NUM_WORKERS", "4"))
+MAX_CONCURRENT = int(os.getenv("ASR_MAX_CONCURRENT", "4"))
 CHUNK_LENGTH_SEC = int(os.getenv("ASR_CHUNK_LENGTH_SEC", "30"))
 VERIFY_ENABLED = os.getenv("ASR_VERIFY_ENABLED", "true").strip().lower() in (
     "1", "true", "yes", "on"
@@ -57,13 +60,31 @@ GPU_ADMISSION_TTL_SECONDS = int(os.getenv("ASR_GPU_ADMISSION_TTL_SECONDS", "1800
 _model: WhisperModel | None = None
 _model_lock = threading.Lock()
 
+# Whisper会在只有背景音乐或弱人声的区间补出训练语料中的频道水印。
+# 这里只拦截已经由人工核实、且中英文同时出现的完整模板，避免用宽泛关键词
+# 误删视频中真实说出的频道名称。
+KNOWN_HALLUCINATION_TEMPLATES = frozenset(
+    {
+        "优优独播剧场yoyotelevisionseriesexclusive",
+    }
+)
+
+
+def normalized_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text).lower()
+    return "".join(character for character in normalized if character.isalnum())
+
+
+def is_known_hallucination(text: str) -> bool:
+    return normalized_text(text) in KNOWN_HALLUCINATION_TEMPLATES
+
 
 class PriorityInferenceGate:
-    """单 GPU 串行推理门禁; P0/P1 始终排在尚未开始的 P9 前面。"""
+    """有限并发推理门禁; P0/P1 始终排在尚未开始的 P9 前面。"""
 
     def __init__(self) -> None:
         self._condition = threading.Condition()
-        self._active = False
+        self._active = 0
         self._realtime: deque[object] = deque()
         self._historical: deque[object] = deque()
 
@@ -74,23 +95,24 @@ class PriorityInferenceGate:
         queue = self._historical if historical else self._realtime
         with self._condition:
             queue.append(token)
-            while self._active or queue[0] is not token or (
+            while self._active >= MAX_CONCURRENT or queue[0] is not token or (
                 historical and self._realtime
             ):
                 self._condition.wait()
             queue.popleft()
-            self._active = True
+            self._active += 1
         try:
             yield
         finally:
             with self._condition:
-                self._active = False
+                self._active -= 1
                 self._condition.notify_all()
 
-    def snapshot(self) -> dict[str, int | bool]:
+    def snapshot(self) -> dict[str, int]:
         with self._condition:
             return {
                 "active": self._active,
+                "maximum": MAX_CONCURRENT,
                 "realtimeWaiting": len(self._realtime),
                 "historicalWaiting": len(self._historical),
             }
@@ -181,6 +203,8 @@ def get_model() -> WhisperModel:
                 compute_type=COMPUTE_TYPE,
                 download_root=MODEL_CACHE,
                 local_files_only=True,
+                cpu_threads=CPU_THREADS,
+                num_workers=NUM_WORKERS,
             )
     return _model
 
@@ -199,9 +223,13 @@ def decode(audio_path: str, language: str | None, chunk_length_sec: int) -> dict
     )
     segments = []
     texts = []
+    filtered_hallucination_count = 0
     for segment in segments_iter:
         text = segment.text.strip()
         if not text:
+            continue
+        if is_known_hallucination(text):
+            filtered_hallucination_count += 1
             continue
         texts.append(text)
         words = []
@@ -220,6 +248,14 @@ def decode(audio_path: str, language: str | None, chunk_length_sec: int) -> dict
                 "end": round(float(segment.end), 3),
                 "text": text,
                 "words": words,
+                "avgLogProbability": round(float(segment.avg_logprob), 6),
+                "noSpeechProbability": round(float(segment.no_speech_prob), 6),
+                "compressionRatio": round(float(segment.compression_ratio), 6),
+                "temperature": (
+                    round(float(segment.temperature), 6)
+                    if segment.temperature is not None
+                    else None
+                ),
             }
         )
     return {
@@ -230,6 +266,7 @@ def decode(audio_path: str, language: str | None, chunk_length_sec: int) -> dict
         "durationAfterVadSec": round(float(info.duration_after_vad), 3),
         "text": "\n".join(texts),
         "segments": segments,
+        "filteredHallucinationCount": filtered_hallucination_count,
     }
 
 
@@ -274,11 +311,6 @@ def speech_gate(audio_path: str) -> dict[str, Any]:
     }
 
 
-def normalized_text(text: str) -> str:
-    normalized = unicodedata.normalize("NFKC", text).lower()
-    return "".join(character for character in normalized if character.isalnum())
-
-
 def repeated_segment_ratio(segments: list[dict[str, Any]]) -> float:
     normalized = [normalized_text(str(segment.get("text", ""))) for segment in segments]
     normalized = [text for text in normalized if text]
@@ -316,7 +348,19 @@ def recognized_speech_seconds(segments: list[dict[str, Any]]) -> float:
     return round(sum(end - start for start, end in merged), 3)
 
 
-def build_verification(primary: dict[str, Any], second: dict[str, Any]) -> dict[str, Any]:
+def tail_word_mean_probability(result: dict[str, Any]) -> float:
+    if not result["segments"]:
+        return 1.0
+    probabilities = [
+        float(word.get("probability", 0.0))
+        for word in result["segments"][-1].get("words", [])
+    ]
+    return sum(probabilities) / len(probabilities) if probabilities else 0.0
+
+
+def build_verification(
+    primary: dict[str, Any], second: dict[str, Any], gate: dict[str, Any]
+) -> dict[str, Any]:
     primary_text = normalized_text(primary["text"])
     second_text = normalized_text(second["text"])
     agreement = difflib.SequenceMatcher(None, primary_text, second_text).ratio()
@@ -336,6 +380,15 @@ def build_verification(primary: dict[str, Any], second: dict[str, Any]) -> dict[
         if longer_speech_sec > 0.0
         else 1.0
     )
+    vad_last_end = max(
+        (float(interval["end"]) for interval in gate.get("intervals", [])),
+        default=0.0,
+    )
+    decoded_last_end = max(primary_last_end, second_last_end)
+    vad_tail_gap = max(0.0, vad_last_end - decoded_last_end)
+    primary_tail_probability = tail_word_mean_probability(primary)
+    second_tail_probability = tail_word_mean_probability(second)
+    tail_probability = min(primary_tail_probability, second_tail_probability)
     status_matches = primary["status"] == second["status"]
     content_matches = (
         primary["status"] == "no_speech"
@@ -346,6 +399,8 @@ def build_verification(primary: dict[str, Any], second: dict[str, Any]) -> dict[
             and primary_repeated_ratio < 0.30
             and second_repeated_ratio < 0.30
             and speech_duration_agreement >= VERIFY_MIN_SPEECH_DURATION_AGREEMENT
+            and vad_tail_gap <= 8.0
+            and tail_probability >= 0.35
         )
     )
     return {
@@ -368,6 +423,12 @@ def build_verification(primary: dict[str, Any], second: dict[str, Any]) -> dict[
         "verificationRecognizedSpeechSec": second_speech_sec,
         "speechDurationAgreement": round(speech_duration_agreement, 6),
         "minimumSpeechDurationAgreement": VERIFY_MIN_SPEECH_DURATION_AGREEMENT,
+        "vadLastSpeechEndSec": round(vad_last_end, 3),
+        "decodedLastEndSec": round(decoded_last_end, 3),
+        "vadTailGapSec": round(vad_tail_gap, 3),
+        "maximumVadTailGapSec": 8.0,
+        "tailWordMeanProbability": round(tail_probability, 6),
+        "minimumTailWordMeanProbability": 0.35,
         "verificationTextSha256": hashlib.sha256(second_text.encode("utf-8")).hexdigest(),
     }
 
@@ -377,13 +438,14 @@ def transcribe(
 ) -> dict[str, Any]:
     started = time.perf_counter()
     with _admission_client.lease(priority), _inference_gate.acquire(priority):
+        gate = speech_gate(audio_path)
         primary = decode(audio_path, language, CHUNK_LENGTH_SEC)
         second = (
             decode(audio_path, language, VERIFY_CHUNK_LENGTH_SEC)
             if VERIFY_ENABLED
             else primary
         )
-    verification = build_verification(primary, second)
+    verification = build_verification(primary, second, gate)
     return {
         "schemaVersion": 1,
         "status": primary["status"]
