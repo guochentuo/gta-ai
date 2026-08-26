@@ -1,0 +1,32 @@
+[Unit]
+Description=GTA faster-whisper ASR CPU Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/gta-ai/faster-whisper
+EnvironmentFile=/opt/gta-ai/faster-whisper/config/asr.env
+ExecStart=/opt/gta-ai/faster-whisper/.venv/bin/python /opt/gta-ai/faster-whisper/app.py --host ${ASR_HOST} --port ${ASR_PORT}
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=900
+TimeoutStopSec=30
+CPUQuota=3200%
+MemoryHigh=24G
+MemoryMax=32G
+MemorySwapMax=0
+Nice=5
+TasksMax=1024
+LimitNOFILE=65536
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gta-ai-asr
+
+[Install]
+WantedBy=multi-user.target

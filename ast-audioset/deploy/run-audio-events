@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly default_config_files=/opt/gta-ai/ast-audioset/config/audio-events.env,/opt/gta-ai/ast-audioset/config/node.env
+IFS=',' read -r -a config_files <<<"${GTA_AI_CONFIG_FILES:-$default_config_files}"
+
+for config_file in "${config_files[@]}"; do
+  if [[ ! -r "$config_file" ]]; then
+    echo "缺少可读配置文件：$config_file" >&2
+    exit 1
+  fi
+done
+
+# shellcheck disable=SC1090
+for config_file in "${config_files[@]}"; do
+  # shellcheck disable=SC1090
+  source "$config_file"
+done
+
+required_variables=(
+  AUDIO_EVENT_IMAGE AUDIO_EVENT_PORT AUDIO_EVENT_DATA_DIR AUDIO_EVENT_MODEL
+  AUDIO_EVENT_MEMORY_LIMIT AUDIO_EVENT_CPU_LIMIT AUDIO_EVENT_CPU_THREADS SERVICE_HOST
+)
+for variable_name in "${required_variables[@]}"; do
+  if [[ -z "${!variable_name:-}" ]]; then
+    echo "配置项不能为空：$variable_name" >&2
+    exit 1
+  fi
+done
+
+if ! ip -4 -o addr show | awk '{print $4}' | cut -d/ -f1 | grep -Fxq "$SERVICE_HOST"; then
+  echo "SERVICE_HOST 不是本机地址：$SERVICE_HOST" >&2
+  exit 1
+fi
+
+install -d -m 0750 "$AUDIO_EVENT_DATA_DIR" "$AUDIO_EVENT_DATA_DIR/home" \
+  "$AUDIO_EVENT_DATA_DIR/huggingface"
+
+exec /usr/bin/podman run --rm \
+  --name gta-ai-audio-events \
+  --network host \
+  --cpus "$AUDIO_EVENT_CPU_LIMIT" \
+  --memory "$AUDIO_EVENT_MEMORY_LIMIT" \
+  --memory-swap "$AUDIO_EVENT_MEMORY_LIMIT" \
+  --pids-limit 1024 \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=1g \
+  --cap-drop all \
+  --security-opt no-new-privileges \
+  --env "HOME=$AUDIO_EVENT_DATA_DIR/home" \
+  --env "HF_HOME=$AUDIO_EVENT_DATA_DIR/huggingface" \
+  --env HF_HUB_DISABLE_XET=1 \
+  --env HF_HUB_OFFLINE=1 \
+  --env "OMP_NUM_THREADS=$AUDIO_EVENT_CPU_THREADS" \
+  --env "MKL_NUM_THREADS=$AUDIO_EVENT_CPU_THREADS" \
+  --env "AUDIO_EVENT_MODEL=$AUDIO_EVENT_MODEL" \
+  --env "AUDIO_EVENT_MODEL_CACHE=$AUDIO_EVENT_DATA_DIR/huggingface" \
+  --env "AUDIO_EVENT_HOST=$SERVICE_HOST" \
+  --env "AUDIO_EVENT_PORT=$AUDIO_EVENT_PORT" \
+  --env AUDIO_EVENT_DEVICE=cpu \
+  --env AUDIO_EVENT_MAX_AUDIO_BYTES=268435456 \
+  --volume "$AUDIO_EVENT_DATA_DIR:$AUDIO_EVENT_DATA_DIR:rw" \
+  "$AUDIO_EVENT_IMAGE"

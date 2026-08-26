@@ -1,0 +1,20 @@
+[Unit]
+Description=gta-ai stable inference router
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+UMask=0002
+WorkingDirectory=/opt/gta-ai/qwen-llm
+EnvironmentFile=/opt/gta-ai/qwen-llm/config/router.env
+ExecStart=/opt/gta-ai/qwen-llm/.venv/bin/python /opt/gta-ai/qwen-llm/router/app.py
+Restart=always
+RestartSec=1
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gta-ai-router
+
+[Install]
+WantedBy=default.target

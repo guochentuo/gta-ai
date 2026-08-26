@@ -1,20 +1,13 @@
-[build-system]
-requires = ["hatchling>=1.27"]
-build-backend = "hatchling.build"
-
 [project]
-name = "gta-ai"
+name = "gta-ai-workspace"
 version = "0.1.0"
-description = "Internal AI analysis and decision-support service for GTA."
+description = "GTA AI模块工作区。"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-  "confluent-kafka>=2.6,<4",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
-  "openai>=1.68,<3",
   "pydantic>=2.10,<3",
-  "pydantic-settings>=2.7,<3",
   "uvicorn[standard]>=0.34,<1",
 ]
 
@@ -25,18 +18,16 @@ dev = [
   "ruff>=0.9,<1",
 ]
 
-[project.scripts]
-gta-ai = "gta_ai.__main__:main"
-gta-ai-router = "gta_ai.inference_router:main"
-gta-ai-idle-trainer = "gta_ai.idle_trainer:main"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/gta_ai"]
-
 [tool.pytest.ini_options]
 addopts = "-q"
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = [
+  "qwen-llm/tests",
+]
+pythonpath = [
+  ".",
+  "qwen-llm",
+]
 
 [tool.ruff]
 line-length = 100
@@ -44,3 +35,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"faster-whisper/app.py" = ["RUF003"]
+"siglip/app.py" = ["B008", "RUF002"]
+"paddle-ocr/app.py" = ["B008", "RUF002", "RUF003"]
+"qwen-llm/router/app.py" = ["RUF001", "RUF003"]
