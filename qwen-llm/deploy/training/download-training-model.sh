@@ -33,6 +33,6 @@ mkdir -p "$(dirname -- "$TRAIN_MODEL_PATH")" /opt/gta-ai/data/cache/huggingface
     --volume "$(dirname -- "$TRAIN_MODEL_PATH"):/models:rw" \
     --volume /opt/gta-ai/data/cache/huggingface:/root/.cache/huggingface:rw \
     "$TRAIN_IMAGE" \
-    -c 'from huggingface_hub import snapshot_download; snapshot_download(repo_id="Qwen/Qwen3.6-27B", local_dir="/models/Qwen3.6-27B")'
+    -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='$TRAIN_MODEL_REPOSITORY', revision='$TRAIN_MODEL_REVISION', local_dir='/models/$(basename -- "$TRAIN_MODEL_PATH")')"
 
 model_complete

@@ -54,7 +54,8 @@ def evaluate_case(
             # 验收禁止 system 消息，防止用上下文伪装成权重微调结果。
             "messages": [{"role": "user", "content": case["prompt"]}],
             "temperature": 0,
-            "max_tokens": 400,
+            # 验收只需覆盖关键事实和基本能力，避免长回答拖慢隔离验证。
+            "max_tokens": 256,
             "chat_template_kwargs": {"enable_thinking": False},
         },
     )

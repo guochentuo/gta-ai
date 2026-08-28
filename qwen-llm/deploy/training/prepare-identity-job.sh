@@ -2,18 +2,24 @@
 set -euo pipefail
 
 app_root=/opt/gta-ai/qwen-llm
-dataset=$app_root/data/training/datasets/identity.jsonl
-manifest=$app_root/data/training/datasets/identity.manifest.json
-pending=$app_root/data/training/queue/pending.json
+config_file=$app_root/config/training/finetune.env
+. "$config_file"
+data_root=/opt/gta-ai/27b/training
+dataset=$data_root/datasets/identity-balanced.jsonl
+manifest=$data_root/datasets/identity-balanced.manifest.json
+preservation=$data_root/datasets/preservation.jsonl
+pending=$data_root/queue/pending.json
 facts=$app_root/training/identity/canonical.json
 
 mkdir -p "$(dirname -- "$dataset")" "$(dirname -- "$pending")"
-"$app_root/.venv/bin/python" "$app_root/training/identity/build_dataset.py" \
+test -s "$preservation"
+"$TRAIN_PYTHON" "$app_root/training/identity/build_balanced_dataset.py" \
     --facts "$facts" \
+    --preservation "$preservation" \
     --output "$dataset" \
     --manifest "$manifest"
 
-"$app_root/.venv/bin/python" - "$manifest" "$dataset" "$pending" <<'PY'
+"$TRAIN_PYTHON" - "$manifest" "$dataset" "$pending" <<'PY'
 import json
 import os
 import sys

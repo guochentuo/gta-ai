@@ -39,6 +39,26 @@ def _load_evaluator():
     return module
 
 
+def _load_balanced_builder():
+    spec = importlib.util.spec_from_file_location(
+        "build_balanced_identity_dataset", IDENTITY / "build_balanced_dataset.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_preservation_capture():
+    spec = importlib.util.spec_from_file_location(
+        "capture_identity_preservation", IDENTITY / "capture_preservation.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_identity_dataset_contains_only_user_assistant_training_turns() -> None:
     facts = json.loads((IDENTITY / "canonical.json").read_text(encoding="utf-8"))
     records = _load_builder().build_records(facts)
@@ -127,3 +147,23 @@ def test_company_boundary_gate_accepts_concise_rejection_but_blocks_invention() 
     assert not evaluator.score_text("不能确认母子关系，但两家公司属于同一集团。", case)[
         "passed"
     ]
+
+
+def test_balanced_identity_data_is_small_and_has_no_system_prompt() -> None:
+    facts = json.loads((IDENTITY / "canonical.json").read_text(encoding="utf-8"))
+    records = _load_balanced_builder().identity_records(facts)
+
+    assert 20 <= len(records) <= 40
+    assert all(
+        message["role"] != "system"
+        for value in records
+        for message in value["messages"]
+    )
+
+
+def test_preservation_prompts_are_diverse_and_do_not_ask_identity() -> None:
+    prompts = _load_preservation_capture().build_prompts()
+
+    assert len(prompts) >= 100
+    assert len(prompts) == len(set(prompts))
+    assert not any("你是谁" in prompt or "叫什么" in prompt for prompt in prompts)

@@ -1,14 +1,26 @@
 <!doctype html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>GTA AI</title>
+  <title>GreenTourAI</title>
+  <script>document.documentElement.lang = navigator.language || "en";</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&amp;family=Noto+Sans+JP:wght@400;500;600;700&amp;family=Noto+Sans+KR:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;family=Noto+Sans+TC:wght@400;500;600;700&amp;display=swap">
   <style>
+    @keyframes gta-image-skeleton {
+      to {
+        background-position-x: -200%;
+      }
+    }
+
     :root {
-      --sidebar: #171717;
-      --sidebar-hover: #2a2a2a;
+      --sidebar: #f9f9f9;
+      --sidebar-hover: #ececec;
       --page: #ffffff;
       --surface: #f4f4f4;
       --surface-strong: #ececec;
@@ -21,24 +33,54 @@
       --shadow: 0 8px 30px rgba(0, 0, 0, .08);
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
-    html, body { height: 100%; }
+    html,
+    body {
+      height: 100%;
+    }
 
     body {
       margin: 0;
       overflow: hidden;
       color: var(--text);
       background: var(--page);
-      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: "Noto Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    button, textarea { font: inherit; }
-    button { color: inherit; }
+    html:lang(zh-CN) body,
+    html:lang(zh-SG) body {
+      font-family: "Noto Sans SC", "Noto Sans", ui-sans-serif, sans-serif;
+    }
+
+    html:lang(zh-TW) body,
+    html:lang(zh-HK) body,
+    html:lang(zh-MO) body {
+      font-family: "Noto Sans TC", "Noto Sans", ui-sans-serif, sans-serif;
+    }
+
+    html:lang(ja) body {
+      font-family: "Noto Sans JP", "Noto Sans", ui-sans-serif, sans-serif;
+    }
+
+    html:lang(ko) body {
+      font-family: "Noto Sans KR", "Noto Sans", ui-sans-serif, sans-serif;
+    }
+
+    button,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
 
     .app {
       display: grid;
-      grid-template-columns: 260px minmax(0, 1fr);
+      grid-template-columns: 256px minmax(0, 1fr);
       height: 100vh;
       height: 100dvh;
       min-height: 0;
@@ -51,8 +93,8 @@
       display: flex;
       min-width: 0;
       flex-direction: column;
-      padding: 12px;
-      color: #f5f5f5;
+      padding: 0 6px 8px;
+      color: #0d0d0d;
       background: var(--sidebar);
     }
 
@@ -60,10 +102,43 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      min-height: 42px;
-      padding: 4px 8px 12px;
+      min-height: 56px;
+      padding: 8px 10px;
       font-weight: 650;
       letter-spacing: -.01em;
+    }
+
+    .sidebar-rail {
+      display: flex;
+      height: 40px;
+      margin: 0 -6px;
+      align-items: center;
+      padding: 0 10px;
+      border-bottom: 1px solid #dedede;
+    }
+
+    .sidebar-icon,
+    .brand-action {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      place-items: center;
+      border: 0;
+      border-radius: 8px;
+      color: #4b4b4b;
+      background: transparent;
+    }
+
+    .brand-title {
+      flex: 1;
+      font-size: 18px;
+      font-weight: 650;
+    }
+
+    .brand-actions {
+      display: flex;
+      gap: 2px;
     }
 
     .brand-mark {
@@ -83,20 +158,25 @@
       align-items: center;
       justify-content: space-between;
       width: 100%;
-      padding: 10px 12px;
+      min-height: 36px;
+      padding: 7px 10px;
       border: 0;
       border-radius: 9px;
-      color: #f5f5f5;
+      color: #0d0d0d;
       background: transparent;
       cursor: pointer;
       transition: background .15s ease;
     }
 
-    .new-chat:hover, .history-item:hover, .history-item.active { background: var(--sidebar-hover); }
+    .new-chat:hover,
+    .history-row:hover,
+    .history-row.active {
+      background: var(--sidebar-hover);
+    }
 
     .history-label {
-      padding: 20px 9px 8px;
-      color: #9b9b9b;
+      padding: 22px 7px 8px;
+      color: #8f8f8f;
       font-size: 12px;
     }
 
@@ -104,42 +184,159 @@
       min-height: 0;
       flex: 1;
       overflow-y: auto;
+      padding: 0 0 4px;
     }
 
     .history-item {
-      width: 100%;
+      min-width: 0;
+      flex: 1;
       overflow: hidden;
-      padding: 10px 11px;
+      height: 36px;
+      padding: 7px 8px;
       border: 0;
       border-radius: 9px;
-      color: #e8e8e8;
+      color: #0d0d0d;
       background: transparent;
       text-align: left;
       text-overflow: ellipsis;
       white-space: nowrap;
+      line-height: 22px;
       cursor: pointer;
+    }
+
+    .history-row {
+      position: relative;
+      display: flex;
+      height: 36px;
+      align-items: center;
+      border-radius: 9px;
+    }
+
+    .history-more {
+      display: none;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 auto;
+      padding: 0;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .history-row:hover .history-more,
+    .history-row.active .history-more {
+      display: grid;
+      place-items: center;
+    }
+
+    .history-menu {
+      position: fixed;
+      z-index: 100;
+      display: none;
+      width: 146px;
+      padding: 7px;
+      border: 1px solid #e3e3e3;
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 8px 26px rgba(0, 0, 0, .12);
+    }
+
+    .history-menu.visible {
+      display: grid;
+    }
+
+    .history-menu button {
+      display: flex;
+      height: 36px;
+      align-items: center;
+      gap: 9px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 8px;
+      color: #171717;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .history-menu button:hover {
+      background: #f1f1f1;
+    }
+
+    .history-menu .danger {
+      color: #e02e2e;
+    }
+
+    .history-menu-separator {
+      height: 1px;
+      margin: 5px 8px;
+      background: #e5e5e5;
     }
 
     .sidebar-footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 8px 4px;
-      border-top: 1px solid #303030;
-      color: #a8a8a8;
+      min-height: 58px;
+      padding: 8px 6px 0;
+      border-top: 0;
+      color: #6b6b6b;
       font-size: 12px;
+    }
+
+    .sidebar-profile {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .profile-avatar {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: 50%;
+      color: #fff;
+      background: #10a37f;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .profile-copy {
+      display: grid;
+      min-width: 0;
+      gap: 1px;
+    }
+
+    .profile-name {
+      overflow: hidden;
+      color: #0d0d0d;
+      font-size: 13px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .profile-note {
+      color: #8f8f8f;
+      font-size: 11px;
     }
 
     .clear-history {
       padding: 5px 7px;
       border: 0;
       border-radius: 6px;
-      color: #aaa;
+      color: #6b6b6b;
       background: transparent;
       cursor: pointer;
     }
 
-    .clear-history:hover { color: white; background: #303030; }
+    .clear-history:hover {
+      color: #0d0d0d;
+      background: #e7e7e7;
+    }
 
     .main {
       display: grid;
@@ -147,49 +344,9 @@
       min-height: 0;
       min-width: 0;
       overflow: hidden;
-      grid-template-rows: 56px minmax(0, 1fr) auto;
+      grid-template-rows: minmax(0, 1fr) auto;
       background: var(--page);
     }
-
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 20px;
-      border-bottom: 1px solid transparent;
-    }
-
-    .model {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      font-size: 16px;
-      font-weight: 650;
-    }
-
-    .model-subtitle {
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 450;
-    }
-
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #a3a3a3;
-    }
-
-    .status-dot.ready { background: var(--accent); box-shadow: 0 0 0 3px rgba(16, 163, 127, .12); }
-    .status-dot.error { background: var(--danger); }
 
     .messages {
       min-height: 0;
@@ -203,15 +360,24 @@
       scrollbar-width: auto;
     }
 
-    .messages::-webkit-scrollbar { width: 12px; }
-    .messages::-webkit-scrollbar-track { background: transparent; }
+    .messages::-webkit-scrollbar {
+      width: 12px;
+    }
+
+    .messages::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
     .messages::-webkit-scrollbar-thumb {
       min-height: 48px;
       border: 3px solid var(--page);
       border-radius: 999px;
       background: #a8a8a8;
     }
-    .messages::-webkit-scrollbar-thumb:hover { background: #7f7f7f; }
+
+    .messages::-webkit-scrollbar-thumb:hover {
+      background: #7f7f7f;
+    }
 
     .welcome {
       display: grid;
@@ -250,28 +416,9 @@
       line-height: 1.7;
     }
 
-    .suggestions {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 34px;
+    .message-row {
+      width: 100%;
     }
-
-    .suggestion {
-      padding: 14px 16px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      color: var(--text);
-      background: var(--page);
-      text-align: left;
-      line-height: 1.45;
-      cursor: pointer;
-      transition: background .15s ease, border-color .15s ease;
-    }
-
-    .suggestion:hover { border-color: #cfcfcf; background: var(--surface); }
-
-    .message-row { width: 100%; }
 
     .message-inner {
       display: flex;
@@ -280,7 +427,9 @@
       padding: 18px 0;
     }
 
-    .message-row.user .message-inner { justify-content: flex-end; }
+    .message-row.user .message-inner {
+      justify-content: flex-end;
+    }
 
     .bubble {
       max-width: min(680px, 85%);
@@ -295,15 +444,296 @@
       white-space: pre-wrap;
     }
 
-    .assistant .bubble { width: 100%; max-width: 100%; }
+    .assistant .bubble {
+      width: 100%;
+      max-width: 100%;
+    }
 
-    .assistant-content h1, .assistant-content h2, .assistant-content h3 {
+    .assistant-content h1,
+    .assistant-content h2,
+    .assistant-content h3 {
       margin: 1.1em 0 .45em;
       line-height: 1.35;
     }
 
-    .assistant-content p { margin: 0 0 .85em; }
-    .assistant-content strong { font-weight: 700; }
+    .assistant-content p {
+      margin: 0 0 .85em;
+    }
+
+    .assistant-content strong {
+      font-weight: 700;
+    }
+
+    .assistant-content ul {
+      margin: 0 0 1em;
+      padding-left: 1.35em;
+    }
+
+    .assistant-content li {
+      margin: .42em 0;
+      padding-left: .15em;
+    }
+
+    .assistant-content blockquote {
+      margin: 14px 0 18px;
+      padding: 14px 16px;
+      border: 1px solid #d9d9d9;
+      border-left: 4px solid #202123;
+      border-radius: 10px;
+      color: var(--text);
+      background: var(--surface);
+      line-height: 1.7;
+    }
+
+    .assistant-content blockquote strong {
+      font-size: 1.02em;
+    }
+
+    .assistant-content .trust-proof-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      width: 100%;
+      margin: 8px 0 20px;
+    }
+
+    .assistant-content .trust-proof-card {
+      display: grid;
+      min-width: 0;
+      min-height: 72px;
+      padding: 12px 14px;
+      align-items: center;
+      grid-template-columns: 36px minmax(0, 1fr) auto;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--text);
+      background: var(--page);
+      box-shadow: 0 3px 12px rgba(0, 0, 0, .055);
+      text-decoration: none;
+      transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+      font: inherit;
+      text-align: left;
+    }
+
+    .assistant-content .trust-proof-icon {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border: 1px solid #dedede;
+      border-radius: 11px;
+      color: #202123;
+      background: #fff;
+    }
+
+    .assistant-content .trust-proof-icon img,
+    .assistant-content .trust-proof-icon svg {
+      display: block;
+      width: 22px;
+      height: 22px;
+    }
+
+    .assistant-content .trust-proof-icon.review {
+      border-color: #f1dfae;
+      color: #b87500;
+      background: #fff9e8;
+    }
+
+    .assistant-content .trust-proof-icon.credential {
+      border-color: #ccebd8;
+      color: #1c8a4d;
+      background: #effaf3;
+    }
+
+    .assistant-content .trust-proof-copy {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+      line-height: 1.3;
+    }
+
+    .assistant-content .trust-proof-copy strong {
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .assistant-content .trust-proof-copy small {
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 400;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .trust-proof-rating,
+    .review-drawer-rating {
+      color: #d99100;
+      letter-spacing: 1px;
+    }
+
+    .trust-proof-rating em,
+    .review-drawer-rating em {
+      margin-left: 5px;
+      color: var(--muted);
+      font-style: normal;
+      letter-spacing: 0;
+    }
+
+    .assistant-content .trust-proof-arrow {
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .assistant-content a.trust-proof-card:hover {
+      border-color: #b8b8b8;
+      box-shadow: 0 5px 16px rgba(0, 0, 0, .10);
+      transform: translateY(-1px);
+    }
+
+    .assistant-content button.trust-proof-card {
+      cursor: pointer;
+    }
+
+    .assistant-content button.trust-proof-card:hover {
+      border-color: #b8b8b8;
+      box-shadow: 0 5px 16px rgba(0, 0, 0, .10);
+      transform: translateY(-1px);
+    }
+
+    @media (max-width: 820px) {
+      .assistant-content .trust-proof-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .review-drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      visibility: hidden;
+      background: rgba(0, 0, 0, .24);
+      opacity: 0;
+      transition: opacity .2s ease, visibility .2s ease;
+    }
+
+    .review-drawer-backdrop.visible {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    .review-loading {
+      display: grid;
+      gap: 14px;
+      padding: 10px 0;
+    }
+
+    .review-loading span {
+      display: block;
+      height: 74px;
+      border-radius: 12px;
+      background: linear-gradient(100deg, #f1f1f1 20%, #fafafa 35%, #f1f1f1 50%);
+      background-size: 220% 100%;
+      animation: gta-image-skeleton 1.35s linear infinite;
+    }
+
+    .review-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      z-index: 91;
+      width: min(440px, 92vw);
+      height: 100dvh;
+      padding: 24px;
+      overflow-y: auto;
+      background: #fff;
+      box-shadow: -14px 0 36px rgba(0, 0, 0, .14);
+      transform: translateX(105%);
+      transition: transform .24s ease;
+    }
+
+    .review-drawer.open {
+      transform: translateX(0);
+    }
+
+    .review-drawer-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .review-drawer-head h2 {
+      margin: 0 0 4px;
+      font-size: 20px;
+    }
+
+    .review-drawer-summary {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .review-drawer-close {
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: #fff;
+      cursor: pointer;
+      font-size: 20px;
+    }
+
+    .google-review-item {
+      padding: 18px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .google-review-author {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .google-review-author img {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #f2f2f2;
+    }
+
+    .google-review-author strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .google-review-meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .google-review-stars {
+      margin-bottom: 8px;
+      color: #d99100;
+      letter-spacing: 1px;
+    }
+
+    .google-review-text {
+      margin: 0;
+      line-height: 1.65;
+      font-size: 14px;
+    }
+
+    .google-review-source {
+      display: inline-block;
+      margin-top: 10px;
+      color: #315c9b;
+      font-size: 12px;
+      text-decoration: none;
+    }
 
     .assistant-content pre {
       overflow-x: auto;
@@ -322,7 +752,10 @@
       font-size: .9em;
     }
 
-    .assistant-content pre code { padding: 0; background: transparent; }
+    .assistant-content pre code {
+      padding: 0;
+      background: transparent;
+    }
 
     .reasoning {
       margin-bottom: 12px;
@@ -332,8 +765,15 @@
       font-size: 13px;
     }
 
-    .reasoning summary { cursor: pointer; font-weight: 600; }
-    .reasoning-body { margin-top: 9px; white-space: pre-wrap; }
+    .reasoning summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .reasoning-body {
+      margin-top: 9px;
+      white-space: pre-wrap;
+    }
 
     .image-strip {
       display: flex;
@@ -366,20 +806,119 @@
       animation: pulse 1.2s infinite ease-in-out;
     }
 
-    .typing span:nth-child(2) { animation-delay: .16s; }
-    .typing span:nth-child(3) { animation-delay: .32s; }
+    .typing span:nth-child(2) {
+      animation-delay: .16s;
+    }
+
+    .typing span:nth-child(3) {
+      animation-delay: .32s;
+    }
+
+    .retry-generation {
+      margin-top: 12px;
+      padding: 8px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
+      color: #111827;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .retry-generation:hover {
+      background: #f3f4f6;
+    }
 
     @keyframes pulse {
-      0%, 70%, 100% { transform: scale(.75); opacity: .45; }
-      35% { transform: scale(1); opacity: 1; }
+
+      0%,
+      70%,
+      100% {
+        transform: scale(.75);
+        opacity: .45;
+      }
+
+      35% {
+        transform: scale(1);
+        opacity: 1;
+      }
     }
 
     .composer-area {
       padding: 12px 20px 18px;
-      background: linear-gradient(0deg, var(--page) 80%, rgba(255,255,255,0));
+      background: linear-gradient(0deg, var(--page) 80%, rgba(255, 255, 255, 0));
     }
 
-    .composer-wrap { width: min(800px, 100%); margin: 0 auto; }
+    .composer-wrap {
+      width: min(800px, 100%);
+      margin: 0 auto;
+    }
+
+    .quick-prompts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0 0 12px;
+    }
+
+    .quick-prompts::before {
+      content: attr(data-heading);
+      grid-column: 1 / -1;
+      margin: 0 2px 1px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .quick-prompts[hidden] {
+      display: none;
+    }
+
+    .quick-prompt {
+      display: flex;
+      min-height: 58px;
+      padding: 11px 12px 11px 14px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--text);
+      background: color-mix(in srgb, var(--surface) 58%, var(--page));
+      font: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, .025);
+      transition: transform .15s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
+    }
+
+    .quick-prompt::after {
+      content: "→";
+      display: grid;
+      width: 24px;
+      height: 24px;
+      flex: 0 0 24px;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--muted);
+      background: var(--page);
+      font-size: 14px;
+    }
+
+    .quick-prompt:hover {
+      border-color: #b9b9b9;
+      background: var(--page);
+      box-shadow: 0 5px 16px rgba(0, 0, 0, .07);
+      transform: translateY(-1px);
+    }
+
+    .quick-prompt:hover::after {
+      color: var(--text);
+      background: var(--surface-strong);
+    }
 
     .attachment-preview {
       display: none;
@@ -392,7 +931,9 @@
       background: var(--page);
     }
 
-    .attachment-preview.visible { display: flex; }
+    .attachment-preview.visible {
+      display: flex;
+    }
 
     .attachment {
       position: relative;
@@ -400,7 +941,12 @@
       height: 58px;
     }
 
-    .attachment img { width: 100%; height: 100%; border-radius: 8px; object-fit: cover; }
+    .attachment img {
+      width: 100%;
+      height: 100%;
+      border-radius: 8px;
+      object-fit: cover;
+    }
 
     .remove-attachment {
       position: absolute;
@@ -423,14 +969,27 @@
       grid-template-columns: auto minmax(0, 1fr) auto;
       gap: 8px;
       align-items: end;
-      padding: 9px 10px;
-      border: 1px solid var(--line);
-      border-radius: 24px;
+      min-height: 58px;
+      padding: 11px 12px;
+      border: 1px solid #cfcfcf;
+      border-radius: 28px;
       background: var(--page);
-      box-shadow: var(--shadow);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, .10), 0 1px 3px rgba(0, 0, 0, .06);
+      transition: border-color .18s ease, box-shadow .18s ease;
     }
 
-    .attachment-preview.visible + .composer { border-radius: 0 0 24px 24px; }
+    .prompt-shell {
+      display: contents;
+    }
+
+    .composer:focus-within {
+      border-color: #8f8f8f;
+      box-shadow: 0 10px 34px rgba(0, 0, 0, .13), 0 0 0 3px rgba(16, 163, 127, .10);
+    }
+
+    .attachment-preview.visible+.composer {
+      border-radius: 0 0 24px 24px;
+    }
 
     .icon-button {
       display: grid;
@@ -444,7 +1003,9 @@
       cursor: pointer;
     }
 
-    .icon-button:hover { background: var(--surface); }
+    .icon-button:hover {
+      background: var(--surface);
+    }
 
     #prompt {
       width: 100%;
@@ -459,15 +1020,24 @@
       line-height: 1.45;
     }
 
-    #prompt::placeholder { color: #8f8f8f; }
+    #prompt::placeholder {
+      color: #8f8f8f;
+    }
 
     .send {
       color: white;
       background: #111;
     }
 
-    .send:hover { background: #333; }
-    .send:disabled { color: #aaa; background: var(--surface-strong); cursor: default; }
+    .send:hover {
+      background: #333;
+    }
+
+    .send:disabled {
+      color: #aaa;
+      background: var(--surface-strong);
+      cursor: default;
+    }
 
     .mode-row {
       display: flex;
@@ -479,16 +1049,47 @@
       font-size: 12px;
     }
 
-    .thinking-toggle { display: flex; align-items: center; gap: 7px; cursor: pointer; }
-    .thinking-toggle input { accent-color: var(--accent); }
+    .thinking-toggle {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+    }
 
-    .disclaimer { text-align: right; }
+    .thinking-toggle input {
+      accent-color: var(--accent);
+    }
 
-    .mobile-menu { display: none; }
-    .sidebar-backdrop { display: none; }
+    .disclaimer {
+      text-align: right;
+    }
 
-    @media (max-width: 760px) {
-      .app { grid-template-columns: 1fr; }
+    .mobile-menu {
+      display: none;
+    }
+
+    .mobile-topbar {
+      display: none;
+    }
+
+    .sidebar-backdrop {
+      display: none;
+    }
+
+    @media (max-width: 820px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .main,
+      .messages,
+      .message-row,
+      .message-inner,
+      .bubble,
+      .assistant-content {
+        min-width: 0;
+        max-width: 100%;
+      }
 
       .sidebar {
         position: fixed;
@@ -498,24 +1099,239 @@
         transition: transform .2s ease;
       }
 
-      .sidebar.open { transform: translateX(0); }
+      .sidebar.open {
+        transform: translateX(0);
+      }
 
       .sidebar-backdrop {
         position: fixed;
         z-index: 15;
         inset: 0;
-        background: rgba(0,0,0,.42);
+        background: rgba(0, 0, 0, .42);
       }
 
-      .sidebar-backdrop.visible { display: block; }
-      .mobile-menu { display: grid; }
-      .topbar { padding: 0 12px; }
-      .model-subtitle { display: none; }
-      .message-inner { width: calc(100% - 28px); }
-      .composer-area { padding: 10px 12px 12px; }
-      .suggestions { grid-template-columns: 1fr; }
-      .welcome { padding-top: 6vh; }
-      .disclaimer { display: none; }
+      .sidebar-backdrop.visible {
+        display: block;
+      }
+
+      .mobile-menu {
+        display: grid;
+        position: static;
+        z-index: auto;
+        background: transparent;
+      }
+
+      .mobile-topbar {
+        position: fixed;
+        z-index: 12;
+        top: 0;
+        left: 0;
+        display: grid;
+        width: 100%;
+        height: 52px;
+        padding: 6px 10px;
+        align-items: center;
+        grid-template-columns: 40px minmax(0, 1fr) 40px;
+        border-bottom: 1px solid rgba(0, 0, 0, .06);
+        background: color-mix(in srgb, var(--page) 94%, transparent);
+        backdrop-filter: blur(14px);
+        transition: transform .2s ease, opacity .2s ease;
+      }
+
+      .mobile-topbar.hidden {
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(-100%);
+      }
+
+      .mobile-topbar-title {
+        overflow: hidden;
+        font-size: 15px;
+        font-weight: 500;
+        text-align: center;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .messages {
+        width: 100%;
+        padding-top: 52px;
+        scrollbar-gutter: auto;
+      }
+
+      .message-inner {
+        width: 100%;
+        padding: 14px 16px;
+      }
+
+      .assistant-content,
+      .assistant-content p,
+      .assistant-content li,
+      .assistant-content blockquote {
+        overflow-wrap: anywhere;
+        word-break: normal;
+      }
+
+      .assistant-content ul {
+        padding-left: 1.25em;
+      }
+
+      .assistant-content .trust-proof-card {
+        width: 100%;
+      }
+
+      .composer-area {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        padding: 8px 12px max(12px, env(safe-area-inset-bottom));
+      }
+
+      .composer-wrap {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+      }
+
+      .quick-prompts {
+        display: flex;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        gap: 8px;
+        margin: 0 0 11px;
+        padding: 3px 1px 5px;
+        scroll-padding-inline: 0;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+        overscroll-behavior-x: contain;
+      }
+
+      .quick-prompts::-webkit-scrollbar {
+        display: none;
+      }
+
+      .quick-prompts::before {
+        display: none;
+      }
+
+      .quick-prompt {
+        width: calc((100% - 16px) / 2.5);
+        min-width: calc((100% - 16px) / 2.5);
+        max-width: calc((100% - 16px) / 2.5);
+        height: 64px;
+        min-height: 64px;
+        max-height: 64px;
+        flex: 0 0 calc((100% - 16px) / 2.5);
+        padding: 8px 11px;
+        align-items: center;
+        border-color: #249d5b;
+        border-radius: 11px;
+        color: #fff;
+        background: linear-gradient(145deg, #35b96f 0%, #23985a 100%);
+        box-shadow: 0 3px 11px rgba(28, 138, 77, .20);
+        font-size: 13px;
+        line-height: 1.48;
+        scroll-snap-align: start;
+        transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+      }
+
+      .quick-prompt-label {
+        display: -webkit-box;
+        overflow: hidden;
+        width: 100%;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        font-weight: 400;
+        letter-spacing: -.01em;
+        text-overflow: ellipsis;
+      }
+
+      .quick-prompt:hover,
+      .quick-prompt:focus-visible {
+        border-color: #197d47;
+        color: #fff;
+        background: linear-gradient(145deg, #2cac66 0%, #1c8a4d 100%);
+        box-shadow: 0 6px 16px rgba(28, 138, 77, .28);
+        transform: translateY(-1px);
+      }
+
+      .quick-prompt:active {
+        transform: scale(.98);
+      }
+
+      .quick-prompt::after {
+        display: none;
+      }
+
+      .composer {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        grid-template-columns: 52px minmax(0, 1fr);
+        gap: 9px;
+        min-height: 52px;
+        padding: 0;
+        align-items: end;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .composer:focus-within {
+        border-color: transparent;
+        box-shadow: none;
+      }
+
+      .composer #attachButton {
+        width: 52px;
+        height: 52px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        font-size: 23px;
+      }
+
+      .prompt-shell {
+        display: grid;
+        min-width: 0;
+        min-height: 52px;
+        padding: 6px 7px 6px 14px;
+        align-items: end;
+        grid-template-columns: minmax(0, 1fr) 40px;
+        border: 1px solid #cfcfcf;
+        border-radius: 27px;
+        background: var(--page);
+        box-shadow: 0 3px 14px rgba(0, 0, 0, .09);
+      }
+
+      .prompt-shell:focus-within {
+        border-color: #9b9b9b;
+      }
+
+      .prompt-shell #prompt {
+        min-height: 40px;
+        max-height: 120px;
+        padding: 9px 3px 6px;
+      }
+
+      .prompt-shell .send {
+        width: 40px;
+        height: 40px;
+      }
+
+      .welcome {
+        padding-top: 6vh;
+      }
+
+      .disclaimer {
+        display: none;
+      }
     }
 
     @media (prefers-color-scheme: dark) {
@@ -529,60 +1345,105 @@
         --shadow: 0 8px 30px rgba(0, 0, 0, .22);
       }
 
-      .composer-area { background: linear-gradient(0deg, var(--page) 80%, rgba(33,33,33,0)); }
-      .send { color: #111; background: #fff; }
-      .send:hover { background: #ddd; }
-      .assistant-content pre { background: #101010; }
+      .composer-area {
+        background: linear-gradient(0deg, var(--page) 80%, rgba(33, 33, 33, 0));
+      }
+
+      .composer {
+        border-color: #555;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, .32), 0 1px 3px rgba(0, 0, 0, .24);
+      }
+
+      .composer:focus-within {
+        border-color: #858585;
+        box-shadow: 0 10px 34px rgba(0, 0, 0, .38), 0 0 0 3px rgba(16, 163, 127, .16);
+      }
+
+      .send {
+        color: #111;
+        background: #fff;
+      }
+
+      .send:hover {
+        background: #ddd;
+      }
+
+      .assistant-content pre {
+        background: #101010;
+      }
     }
   </style>
 </head>
+
 <body>
   <div class="app">
     <aside class="sidebar" id="sidebar">
-      <div class="brand"><span class="brand-mark">GTA</span><span>GTA AI</span></div>
+      <div class="sidebar-rail" aria-hidden="true">
+        <span class="sidebar-icon">⌘</span>
+      </div>
+      <div class="brand">
+        <span class="brand-title">GreenTourAI</span>
+        <span class="brand-actions" aria-hidden="true">
+          <span class="brand-action">⌕</span>
+          <span class="brand-action">▣</span>
+        </span>
+      </div>
       <button class="new-chat" id="newChat" type="button">
-        <span>＋ 新对话</span><span>⌘ K</span>
+        <span>□&nbsp; 新对话</span>
       </button>
       <div class="history-label">最近对话</div>
       <nav class="history" id="history"></nav>
       <div class="sidebar-footer">
-        <span>仅保存在当前浏览器</span>
+        <span class="sidebar-profile">
+          <span class="profile-avatar">GT</span>
+          <span class="profile-copy">
+            <span class="profile-name">GreenTourAI</span>
+            <span class="profile-note">本地模型</span>
+          </span>
+        </span>
         <button class="clear-history" id="clearHistory" type="button">清空</button>
       </div>
     </aside>
+    <div class="history-menu" id="historyMenu" role="menu">
+      <button type="button" data-action="share">⇧ <span>分享</span></button>
+      <button type="button" data-action="rename">✎ <span>重命名</span></button>
+      <div class="history-menu-separator"></div>
+      <button type="button" data-action="pin">⌖ <span>置顶聊天</span></button>
+      <button type="button" data-action="archive">▱ <span>归档</span></button>
+      <button type="button" class="danger" data-action="delete">♲ <span>删除</span></button>
+    </div>
     <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+    <div class="review-drawer-backdrop" id="reviewDrawerBackdrop"></div>
+    <aside class="review-drawer" id="reviewDrawer" aria-hidden="true" aria-labelledby="reviewDrawerTitle">
+      <div class="review-drawer-head">
+        <div>
+          <h2 id="reviewDrawerTitle"></h2>
+          <div class="review-drawer-summary" id="reviewDrawerSummary"></div>
+        </div>
+        <button class="review-drawer-close" id="reviewDrawerClose" type="button" aria-label="关闭">×</button>
+      </div>
+      <div id="reviewDrawerBody"></div>
+    </aside>
 
     <main class="main">
-      <header class="topbar">
-        <div style="display:flex;align-items:center;gap:10px">
-          <button class="icon-button mobile-menu" id="mobileMenu" type="button" aria-label="打开菜单">☰</button>
-          <div class="model">
-            <span>Qwen3.8 27B</span>
-            <span class="model-subtitle">本地 FP8 · 32K</span>
-          </div>
-        </div>
-        <div class="status" title="本地模型服务状态">
-          <span class="status-dot" id="statusDot"></span>
-          <span id="statusText">检查中</span>
-        </div>
+      <header class="mobile-topbar" id="mobileTopbar">
+        <button class="icon-button mobile-menu" id="mobileMenu" type="button" aria-label="打开菜单">☰</button>
+        <span class="mobile-topbar-title">GreenTourAI</span>
+        <span aria-hidden="true"></span>
       </header>
 
       <section class="messages" id="messages"></section>
 
       <section class="composer-area">
         <div class="composer-wrap">
+          <div class="quick-prompts" id="quickPrompts" aria-label="推荐提问" hidden></div>
           <div class="attachment-preview" id="attachmentPreview"></div>
           <div class="composer" id="composer">
             <button class="icon-button" id="attachButton" type="button" aria-label="上传图片" title="上传图片或视频关键帧">＋</button>
-            <textarea id="prompt" rows="1" placeholder="给 GTA AI 发送消息" autocomplete="off"></textarea>
-            <button class="icon-button send" id="sendButton" type="button" aria-label="发送">↑</button>
-          </div>
-          <div class="mode-row">
-            <label class="thinking-toggle" title="深度思考会显著增加生成时间">
-              <input id="thinking" type="checkbox">
-              <span>深度思考</span>
-            </label>
-            <span class="disclaimer">本地模型可能出错，关键结论仍需 OpenAI 最终复核</span>
+            <div class="prompt-shell">
+              <textarea id="prompt" rows="1" placeholder="询问任何旅行问题" autocomplete="off"></textarea>
+              <button class="icon-button send" id="sendButton" type="button" aria-label="发送">↑</button>
+            </div>
           </div>
           <input id="fileInput" type="file" accept="image/*" multiple hidden>
         </div>
@@ -595,9 +1456,17 @@
       "use strict";
 
       const STORAGE_KEY = "gta-ai-chat-history-v1";
-      const SYSTEM_PROMPT = "你是公司内部 GTA AI 数据分析助手。请基于用户提供的数据和素材回答；区分事实、假设和建议；缺少证据时明确说明。";
+      const WELCOME_UI_VERSION = 5;
       const MAX_CONVERSATIONS = 20;
       const MAX_IMAGES = 4;
+      const MEDIA_CDN_PREFIX = "https://hk-cdn.greentourasia.com/";
+      const PROXIED_BY_NGINX = window.location.hostname === "192.168.80.2";
+      const ROUTER_HOST = window.location.hostname;
+      const ROUTER_URL = PROXIED_BY_NGINX
+        ? `${window.location.origin}/router`
+        : `http://${ROUTER_HOST}:7100`;
+      const CHAT_URL = `${ROUTER_URL}/v1/chat/completions`;
+      const landingKeyword = new URLSearchParams(window.location.search).get("keyword") || "";
 
       const els = {
         messages: document.getElementById("messages"),
@@ -610,24 +1479,173 @@
         history: document.getElementById("history"),
         newChat: document.getElementById("newChat"),
         clearHistory: document.getElementById("clearHistory"),
-        statusDot: document.getElementById("statusDot"),
-        statusText: document.getElementById("statusText"),
         sidebar: document.getElementById("sidebar"),
         backdrop: document.getElementById("sidebarBackdrop"),
         mobileMenu: document.getElementById("mobileMenu"),
-        composer: document.getElementById("composer")
+        mobileTopbar: document.getElementById("mobileTopbar"),
+        composer: document.getElementById("composer"),
+        quickPrompts: document.getElementById("quickPrompts"),
+        reviewDrawer: document.getElementById("reviewDrawer"),
+        reviewDrawerBackdrop: document.getElementById("reviewDrawerBackdrop"),
+        reviewDrawerClose: document.getElementById("reviewDrawerClose"),
+        reviewDrawerTitle: document.getElementById("reviewDrawerTitle"),
+        reviewDrawerSummary: document.getElementById("reviewDrawerSummary"),
+        reviewDrawerBody: document.getElementById("reviewDrawerBody")
       };
+      els.historyMenu = document.getElementById("historyMenu");
 
       let conversations = loadConversations();
+      recoverInterruptedMessages(conversations);
+      conversations.forEach(chat => {
+        const hasUserMessage = (chat.messages || []).some(message => message.role === "user");
+        const hasOldWelcome = (chat.messages || []).some(
+          message => message.campaignWelcome && message.welcomeUiVersion !== WELCOME_UI_VERSION
+        );
+        if (!hasUserMessage && hasOldWelcome) chat.messages = [];
+      });
+      saveConversations();
       let activeId = conversations[0]?.id || "";
       let attachments = [];
       let controller = null;
+      let activeRequestId = "";
       let streaming = false;
+      let historyMenuChatId = "";
+      const assistantUpdateTimers = new Map();
 
       if (!activeId) createConversation();
 
       function uid() {
         return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      }
+
+      function currentGoogleReviews() {
+        const chat = currentConversation();
+        return [...(chat?.messages || [])].reverse().find(message => message.googleReviews)?.googleReviews || null;
+      }
+
+      function currentPlatformReviews() {
+        const chat = currentConversation();
+        return [...(chat?.messages || [])].reverse().find(message => message.platformReviews)?.platformReviews || null;
+      }
+
+      function currentWelcomeUiText() {
+        const chat = currentConversation();
+        return [...(chat?.messages || [])].reverse().find(message => message.welcomeUiText)?.welcomeUiText || {};
+      }
+
+      function currentReviewMessage() {
+        const chat = currentConversation();
+        return [...(chat?.messages || [])].reverse().find(message => message.reviewSection) || null;
+      }
+
+      async function loadReviewSummary(target, assistantIndex) {
+        const browserLocale = navigator.language || "";
+        const response = await fetch("/api/reviews/summary", {
+          headers: { "X-GTA-Locale": browserLocale }
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const summary = await response.json();
+        target.googleReviews = summary.google || null;
+        target.platformReviews = summary.platform || null;
+        updateAssistant(assistantIndex);
+        saveConversations();
+      }
+
+      async function loadReviewList(source) {
+        const browserLocale = navigator.language || "";
+        const response = await fetch(
+          `/api/reviews?source=${encodeURIComponent(source)}&page=1&page_size=20`,
+          { headers: { "X-GTA-Locale": browserLocale } }
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }
+
+      async function openReviewDrawer() {
+        const target = currentReviewMessage();
+        if (!target) return;
+        const ui = currentWelcomeUiText();
+        els.reviewDrawerTitle.textContent = ui.google_reviews_title || "Google";
+        els.reviewDrawerSummary.innerHTML = "";
+        els.reviewDrawerBody.innerHTML = '<div class="review-loading" aria-busy="true"><span></span><span></span><span></span></div>';
+        els.reviewDrawer.classList.add("open");
+        els.reviewDrawerBackdrop.classList.add("visible");
+        els.reviewDrawer.setAttribute("aria-hidden", "false");
+        if (!Array.isArray(target.googleReviews?.reviews)) {
+          try {
+            target.googleReviews = await loadReviewList("google");
+            saveConversations();
+          } catch (error) {
+            els.reviewDrawerBody.innerHTML = `<p>${escapeHtml(ui.google_reviews_empty || ui.reviews_fallback || error.message)}</p>`;
+            return;
+          }
+        }
+        const place = target.googleReviews;
+        if (!place) return;
+        const rating = Number(place.rating || 0);
+        const filledStars = Math.max(0, Math.min(5, Math.round(rating)));
+        els.reviewDrawerSummary.innerHTML = `<span class="review-drawer-rating" aria-label="${rating.toFixed(1)} 分">${"★".repeat(filledStars)}${"☆".repeat(5 - filledStars)}<em>${rating.toFixed(1)}</em></span>`;
+        const reviews = Array.isArray(place.reviews) ? place.reviews : [];
+        els.reviewDrawerBody.innerHTML = reviews.length ? reviews.map(review => {
+          const author = escapeHtml(String(review.author_name || ui.google_reviewer_fallback || "Google"));
+          const photo = String(review.author_photo_uri || "");
+          const text = escapeHtml(String(review.text || ui.rating_only_text || ""));
+          const time = escapeHtml(String(review.relative_time || ""));
+          const stars = "★".repeat(Math.max(0, Math.min(5, Math.round(Number(review.rating || 0))))) + "☆".repeat(Math.max(0, 5 - Math.round(Number(review.rating || 0))));
+          const source = String(review.google_maps_uri || "");
+          return `<article class="google-review-item"><div class="google-review-author">${photo.startsWith("https://") ? `<img src="${escapeHtml(photo)}" alt="">` : ""}<div><strong>${author}</strong><span class="google-review-meta">${time}</span></div></div><div class="google-review-stars">${stars}</div><p class="google-review-text">${text}</p>${source.startsWith("https://") ? `<a class="google-review-source" href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">${escapeHtml(ui.google_review_source_label || "Google")} ↗</a>` : ""}</article>`;
+        }).join("") : `<p>${escapeHtml(ui.google_reviews_empty || "")}</p>`;
+        els.reviewDrawer.classList.add("open");
+        els.reviewDrawerBackdrop.classList.add("visible");
+        els.reviewDrawer.setAttribute("aria-hidden", "false");
+      }
+
+      async function openPlatformReviewDrawer() {
+        const target = currentReviewMessage();
+        if (!target) return;
+        const ui = currentWelcomeUiText();
+        els.reviewDrawerTitle.textContent = ui.platform_reviews_title || "GreenTourAI";
+        els.reviewDrawerSummary.innerHTML = "";
+        els.reviewDrawerBody.innerHTML = '<div class="review-loading" aria-busy="true"><span></span><span></span><span></span></div>';
+        els.reviewDrawer.classList.add("open");
+        els.reviewDrawerBackdrop.classList.add("visible");
+        els.reviewDrawer.setAttribute("aria-hidden", "false");
+        if (!Array.isArray(target.platformReviews?.reviews)) {
+          try {
+            target.platformReviews = await loadReviewList("platform");
+            saveConversations();
+          } catch (error) {
+            els.reviewDrawerBody.innerHTML = `<p>${escapeHtml(ui.platform_reviews_empty || ui.reviews_fallback || error.message)}</p>`;
+            return;
+          }
+        }
+        const data = target.platformReviews;
+        if (!data) return;
+        const rating = Number(data.rating || 0);
+        const filledStars = Math.max(0, Math.min(5, Math.round(rating)));
+        els.reviewDrawerTitle.textContent = ui.platform_reviews_title || "GreenTourAI";
+        els.reviewDrawerSummary.innerHTML = `<span class="review-drawer-rating" aria-label="${rating.toFixed(1)} 分">${"★".repeat(filledStars)}${"☆".repeat(5 - filledStars)}<em>${rating.toFixed(1)}</em></span>`;
+        const reviews = Array.isArray(data.reviews) ? data.reviews : [];
+        els.reviewDrawerBody.innerHTML = reviews.map(review => {
+          const score = Number(review.rating || 0);
+          const stars = "★".repeat(Math.max(0, Math.min(5, Math.round(score)))) + "☆".repeat(Math.max(0, 5 - Math.round(score)));
+          const author = escapeHtml(String(review.author_name || ui.platform_reviewer_fallback || ""));
+          const avatar = String(review.author_photo_uri || "");
+          const text = escapeHtml(String(review.text || ""));
+          const time = escapeHtml(String(review.publish_time || "").replace("T", " "));
+          const path = String(review.display_url || "");
+          const url = path ? `https://www.greentourasia.com/${path.replace(/^\/+/, "")}` : "";
+          return `<article class="google-review-item"><div class="google-review-author">${avatar.startsWith("http") ? `<img src="${escapeHtml(avatar)}" alt="">` : ""}<div><strong>${author}</strong><span class="google-review-meta">${time}</span></div></div><div class="google-review-stars">${stars} <span class="google-review-meta">${score.toFixed(1)}</span></div><p class="google-review-text">${text}</p>${url ? `<a class="google-review-source" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(ui.platform_review_source_label || "")} ↗</a>` : ""}</article>`;
+        }).join("") || `<p>${escapeHtml(ui.platform_reviews_empty || "")}</p>`;
+        els.reviewDrawer.classList.add("open");
+        els.reviewDrawerBackdrop.classList.add("visible");
+        els.reviewDrawer.setAttribute("aria-hidden", "false");
+      }
+
+      function closeReviewDrawer() {
+        els.reviewDrawer.classList.remove("open");
+        els.reviewDrawerBackdrop.classList.remove("visible");
+        els.reviewDrawer.setAttribute("aria-hidden", "true");
       }
 
       async function writeServerLog(event, payload) {
@@ -645,10 +1663,38 @@
       function loadConversations() {
         try {
           const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-          return Array.isArray(parsed) ? parsed : [];
+          if (!Array.isArray(parsed)) return [];
+          let retainedUnstartedConversation = false;
+          return parsed.map(chat => {
+            const hasUserMessage = (chat.messages || []).some(message => message.role === "user");
+            if (!hasUserMessage && chat.title === "新对话") {
+              return {
+                ...chat,
+                title: landingKeyword.trim().slice(0, 24) || "旅行咨询"
+              };
+            }
+            return chat;
+          }).filter(chat => {
+            const hasUserMessage = (chat.messages || []).some(message => message.role === "user");
+            if (hasUserMessage) return true;
+            if (retainedUnstartedConversation) return false;
+            retainedUnstartedConversation = true;
+            return true;
+          });
         } catch (_) {
           return [];
         }
+      }
+
+      function recoverInterruptedMessages(chats) {
+        chats.forEach(chat => {
+          (chat.messages || []).forEach(message => {
+            if (message.role !== "assistant" || !message.pending) return;
+            message.pending = false;
+            message.interrupted = true;
+            message.text = "上次生成因页面刷新或服务重启中断。";
+          });
+        });
       }
 
       function saveConversations() {
@@ -667,7 +1713,13 @@
       }
 
       function createConversation() {
-        const chat = { id: uid(), title: "新对话", messages: [], createdAt: Date.now() };
+        const chat = {
+          id: uid(),
+          title: landingKeyword.trim().slice(0, 24) || "旅行咨询",
+          messages: [],
+          suggestedQuestions: [],
+          createdAt: Date.now()
+        };
         conversations.unshift(chat);
         activeId = chat.id;
         saveConversations();
@@ -689,19 +1741,273 @@
         })[char]);
       }
 
-      function renderMarkdown(value) {
+      function mediaUrl(value) {
+        const raw = String(value || "").trim();
+        if (/^https?:\/\//i.test(raw)) return raw;
+        const path = raw.replace(/^\/+/, "");
+        return `${MEDIA_CDN_PREFIX}${path}`;
+      }
+
+      function thumbnailUrl(value) {
+        const url = mediaUrl(value);
+        const separator = url.includes("?") ? "&" : "?";
+        return `${url}${separator}x-oss-process=image/resize,m_fill,w_600,h_450/quality,q_85`;
+      }
+
+      function stripImageTransportText(value) {
+        let visible = "";
+        let cursor = 0;
+        while (cursor < value.length) {
+          const start = value.indexOf("![", cursor);
+          if (start < 0) return visible + value.slice(cursor);
+          visible += value.slice(cursor, start);
+          const end = value.indexOf(")", start + 2);
+          if (end < 0) return visible;
+          cursor = end + 1;
+        }
+        return visible;
+      }
+
+      function renderAssistantContent(message) {
+        const marker = "[[GTA_CONTACT]]";
+        const text = String(message.text || "");
+        const markerPosition = text.indexOf(marker);
+        if (markerPosition >= 0) {
+          const before = text.slice(0, markerPosition);
+          const after = text.slice(markerPosition + marker.length);
+          const knowledgeImages = message.knowledgeImages || [];
+          const imageMarkerBefore = /\[\[IMAGE_GROUP_1\]\]/.test(before);
+          return renderMarkdown(before, message.pending === true, imageMarkerBefore ? knowledgeImages : [], message.reviewSection === true)
+            + renderContactText(message.contactText)
+            + renderMarkdown(after, message.pending === true, imageMarkerBefore ? [] : knowledgeImages, message.reviewSection === true);
+        }
+        const content = renderMarkdown(text, message.pending === true, message.knowledgeImages || [], message.reviewSection === true);
+        return message.pending ? content : content + renderContactText(message.contactText);
+      }
+
+      function renderContactText(contactText) {
+        if (!contactText || !Array.isArray(contactText.contacts) || !contactText.contacts.length) return "";
+        const contacts = contactText.contacts.map(contact => {
+          const channel = escapeHtml(String(contact.channel || "联系顾问"));
+          const account = escapeHtml(String(contact.account || ""));
+          const url = String(contact.url || "");
+          const body = `<strong>${channel}：${account}</strong>`;
+          return url.startsWith("https://")
+            ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:#315c9b;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;">${body}</a>`
+            : `<span style="color:inherit;">${body}</span>`;
+        }).join(" ｜ ");
+        return `<p aria-label="联系旅行顾问" style="margin:12px 0;line-height:1.8;color:inherit;">${escapeHtml(String(contactText.title || "需要继续确认时，可以联系旅行顾问。"))} <span style="font-weight:600;">${contacts}</span>。${escapeHtml(String(contactText.description || ""))}</p>`;
+      }
+
+      function renderHandoffOffer(message, index) {
+        if (!message.handoffOffer || message.handoffAccepted) return "";
+        const prompt = escapeHtml(String(message.handoffOffer.prompt || "需要旅行顾问继续帮你安排吗？"));
+        const actionLabel = escapeHtml(String(message.handoffOffer.action_label || "联系旅行顾问"));
+        return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 2px;color:#5f6368;font-size:14px;"><span>${prompt}</span><button type="button" class="handoff-button" data-index="${index}" style="padding:6px 12px;border:1px solid #c7cbd1;border-radius:8px;background:#fff;color:#202124;cursor:pointer;font:inherit;">${actionLabel}</button></div>`;
+      }
+
+      function withKnowledgeImages(value) {
+        let text = String(value || "");
+        text = text.replace(
+          /!\[([^\]]*)\]\(((?:cover|icon|avatar|video|image|chatImage|picture|qrcode)\/[^)\s]+)\)/g,
+          (_, alt, path) => `![${alt}](${mediaUrl(path)})`
+        );
+        return text.replace(
+          /(^|[\s(：:])((?:cover|icon|avatar|video|image|chatImage|picture|qrcode)\/[^\s)\]，。]+)/gm,
+          (_, prefix, path) => `${prefix}![知识库图片](${mediaUrl(path)})`
+        );
+      }
+
+      function renderMarkdown(value, streaming = false, retrievalImages = [], reviewSection = false) {
         const blocks = [];
-        let html = escapeHtml(value || "").replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (_, code) => {
+        const normalizedValue = withKnowledgeImages(value).replace(/^\s*#{1,6}\s*$/gm, "");
+        let html = escapeHtml(normalizedValue).replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (_, code) => {
           const marker = `%%CODE_BLOCK_${blocks.length}%%`;
           blocks.push(`<pre><code>${code.trim()}</code></pre>`);
           return marker;
         });
+        // 模型偶尔会把内部图片标记包装成Markdown引用或列表项；
+        // 图片组件替换时连同这些无语义前缀一起移除，避免页面残留孤立的 > 或 -。
+        html = html.replace(
+          /(^|\n)[ \t]*(?:&gt;|[-*+])[ \t]*(?=\[\[IMAGE_GROUP_1\]\])/g,
+          "$1"
+        );
+        const gtaImageMarker = "[[IMAGE_GROUP_1]]";
+        const gtaImageMarkerPosition = html.indexOf(gtaImageMarker);
+        const markdownImagePosition = html.indexOf("![");
+        let imageTransportPosition = gtaImageMarkerPosition >= 0
+          ? gtaImageMarkerPosition
+          : markdownImagePosition;
+        const knowledgeImagePattern = /!\[([^\]]*)\]\((https:\/\/hk-cdn\.greentourasia\.com\/[^)\s]+)\)/g;
+        const completeImages = [...html.matchAll(knowledgeImagePattern)].slice(0, 3);
+        const earlyImages = retrievalImages.slice(0, 3).map(image => ({
+          alt: escapeHtml(String(image.title || "知识库图片")),
+          src: escapeHtml(String(image.url || ""))
+        })).filter(image => image.src);
+        // 图片候选只负责提供数据；没有模型标记时绝不自动插图。
+        // 这能避免价格、公司和普通问答因为ES凑够三张封面而出现无关图片。
+        const canRenderEarly = imageTransportPosition >= 0 && earlyImages.length > 0;
+        let imageGridRendered = false;
+        if (canRenderEarly || completeImages.length === 3 || (!streaming && completeImages.length > 0)) {
+          const marker = `%%CODE_BLOCK_${blocks.length}%%`;
+          const imageStyle = "display:block;width:100%;height:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;";
+          const gridImages = canRenderEarly
+            ? earlyImages
+            : completeImages.map(match => ({ alt: match[1], src: match[2] }));
+          const gridWidth = gridImages.length === 1 ? "320px" : (gridImages.length === 2 ? "610px" : "900px");
+          blocks.push(
+            `<div style="display:grid;grid-template-columns:repeat(${gridImages.length},minmax(0,1fr));gap:6px;width:100%;max-width:${gridWidth};margin:18px 0;">` +
+            gridImages.map(image =>
+              `<img src="${thumbnailUrl(image.src)}" alt="${image.alt}" loading="lazy" style="${imageStyle}">`
+            ).join("") +
+            `</div>`
+          );
+          if (gtaImageMarkerPosition >= 0) {
+            html = html.replace(gtaImageMarker, marker);
+          } else if (canRenderEarly && completeImages.length < 3) {
+            html = html.slice(0, imageTransportPosition) + marker + html.slice(imageTransportPosition);
+          } else {
+            let replacedImages = 0;
+            html = html.replace(knowledgeImagePattern, original => {
+              if (replacedImages >= completeImages.length) return original;
+              replacedImages += 1;
+              return replacedImages === 1 ? marker : "";
+            });
+          }
+          imageGridRendered = true;
+        }
+        html = html.replace(/\[\[IMAGE_GROUP_1\]\]/g, "");
+        // 三图组件提取后，剩余图片语法全部属于内部传输文本，完整或残缺都不得显示。
+        html = stripImageTransportText(html);
+        if (streaming && !imageGridRendered) {
+          // 图片Markdown是内部传输格式。检测到开头后立即从可见正文中剥离，
+          // 在原位置放置固定三格骨架；三张完整后由上面的组图块整体替换。
+          const skeletonPosition = imageTransportPosition;
+          if (skeletonPosition >= 0) {
+            const marker = `%%CODE_BLOCK_${blocks.length}%%`;
+            const cellStyle = "aspect-ratio:4/3;border:1px solid #dedede;border-radius:12px;background:linear-gradient(110deg,#f2f2f2 8%,#fafafa 18%,#f2f2f2 33%);background-size:200% 100%;animation:gta-image-skeleton 1.4s linear infinite;";
+            blocks.push(
+              `<div aria-label="图片加载中" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%;max-width:900px;margin:18px 0;">` +
+              `<div style="${cellStyle}"></div><div style="${cellStyle}"></div><div style="${cellStyle}"></div>` +
+              `</div>`
+            );
+            html = html.slice(0, skeletonPosition) + marker + html.slice(skeletonPosition);
+          }
+        }
+        if (streaming) {
+          // 已闭合的Markdown立即稳定渲染；当前尚未闭合的标记仍按普通文本显示。
+          // 标题必须等到换行后才确认，避免生成中的最后一行反复改变字号。
+          html = html
+            .replace(/^### (.+)(?=\n)/gm, "<h3>$1</h3>")
+            .replace(/^## (.+)(?=\n)/gm, "<h2>$1</h2>")
+            .replace(/^# (.+)(?=\n)/gm, "<h1>$1</h1>")
+            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+            .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+            .replace(/^#{1,3}[ \t]+/gm, "")
+            .replace(/\*\*/g, "")
+            .replace(/`/g, "");
+        } else {
+          html = html
+            .replace(/^### (.*)$/gm, "<h3>$1</h3>")
+            .replace(/^## (.*)$/gm, "<h2>$1</h2>")
+            .replace(/^# (.*)$/gm, "<h1>$1</h1>")
+            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+            .replace(/`([^`]+)`/g, "<code>$1</code>");
+        }
+        let trustProofRendered = false;
+        const renderTrustProofRow = () => {
+          trustProofRendered = true;
+          const marker = `%%CODE_BLOCK_${blocks.length}%%`;
+          const ui = currentWelcomeUiText();
+          const google = currentGoogleReviews();
+          const googleRating = Number(google?.rating || 0);
+          const googleFilledStars = Math.max(0, Math.min(5, Math.round(googleRating)));
+          const platform = currentPlatformReviews();
+          const platformRating = Number(platform?.rating || 0);
+          const platformFilledStars = Math.max(0, Math.min(5, Math.round(platformRating)));
+          const googleSummary = google
+            ? `<span class="trust-proof-rating" aria-label="${googleRating.toFixed(1)} 分">${"★".repeat(googleFilledStars)}${"☆".repeat(5 - googleFilledStars)}<em>${googleRating.toFixed(1)}</em></span>`
+            : escapeHtml(ui.reviews_fallback || "");
+          const reviewIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.9l2.75 5.58 6.16.89-4.45 4.34 1.05 6.13L12 16.94l-5.51 2.9 1.05-6.13-4.45-4.34 6.16-.89L12 2.9z" fill="currentColor"/></svg>';
+          const credentialIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.08 1.42 2.5-.24.99 2.31 2.19 1.23-.24 2.5L20.94 12l-1.42 2.08.24 2.5-2.19 1.23-.99 2.31-2.5-.24L12 21.3l-2.08-1.42-2.5.24-.99-2.31-2.19-1.23.24-2.5L3.06 12l1.42-2.08-.24-2.5 2.19-1.23.99-2.31 2.5.24L12 2.5z" fill="currentColor"/><path d="M8.2 12.1l2.35 2.35 5.2-5.2" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+          blocks.push(
+            `<div class="trust-proof-row" aria-label="${escapeHtml(ui.trust_section_label || "")}">` +
+            `<button class="trust-proof-card google-review-drawer-button" type="button"><span class="trust-proof-icon"><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"></span><span class="trust-proof-copy"><strong>${escapeHtml(ui.google_reviews_title || "Google")}</strong><small>${googleSummary}</small></span><span class="trust-proof-arrow" aria-hidden="true">›</span></button>` +
+            `<button class="trust-proof-card platform-review-drawer-button" type="button"><span class="trust-proof-icon review">${reviewIcon}</span><span class="trust-proof-copy"><strong>${escapeHtml(ui.platform_reviews_title || "GreenTourAI")}</strong><small>${platform ? `<span class="trust-proof-rating">${"★".repeat(platformFilledStars)}${"☆".repeat(5 - platformFilledStars)}<em>${platformRating.toFixed(1)}</em></span>` : escapeHtml(ui.reviews_fallback || "")}</small></span><span class="trust-proof-arrow" aria-hidden="true">›</span></button>` +
+            `<a class="trust-proof-card" href="https://www.greentourasia.com/about" target="_blank" rel="noopener noreferrer"><span class="trust-proof-icon credential">${credentialIcon}</span><span class="trust-proof-copy"><strong>${escapeHtml(ui.credentials_title || "GreenTourAsia")}</strong><small>${escapeHtml(ui.credentials_subtitle || "")}</small></span><span class="trust-proof-arrow" aria-hidden="true">↗</span></a>` +
+            `</div>`
+          );
+          return marker;
+        };
+        html = html.replace(
+          /\[[^\]]+\]\((https:\/\/share\.google\/[^)\s]+)\)\s*\[\[GTA_PLATFORM_REVIEWS\]\]\s*\[[^\]]+\]\(https:\/\/www\.greentourasia\.com\/(?:brand-introduction|about)\)/g,
+          () => renderTrustProofRow()
+        );
+        // 欢迎内容通过 SSE 逐字到达时，三个来源标记不会同时闭合。
+        // 一旦识别到评价区起点，就直接使用最终组件并暂时隐藏未完成的传输尾部，
+        // 避免 Google 图标、Markdown 链接和占位符先以无样式正文闪现。
+        if (reviewSection && streaming && !trustProofRendered) {
+          const reviewTransportStart = html.search(/\[[^\]\n]*\]\(https:\/\/share\.google\//);
+          if (reviewTransportStart >= 0) {
+            const prefix = html.slice(0, reviewTransportStart);
+            let suffix = html.slice(reviewTransportStart);
+            // 只删除内部传输标记，不截断其后已经到达的正常正文。
+            // 尚未闭合的 Markdown 一定位于当前流式尾部，只隐藏该尾部；
+            // 下一批字符到达并闭合后，后续正文会立即继续显示。
+            suffix = suffix.replace(
+              /^\[[^\]\n]*\]\(https:\/\/share\.google\/[^)\n]*(?:\)|$)/,
+              ""
+            );
+            suffix = suffix.replace(/\[\[GTA_PLATFORM_REVIEWS\]\]/g, "");
+            suffix = suffix.replace(
+              /\[[^\]\n]*\]\(https:\/\/www\.greentourasia\.com\/(?:brand-introduction|about)\)/g,
+              ""
+            );
+            // 隐藏评价区当前正在生成但尚未闭合的单个标记，避免把“[查看…”暴露给用户。
+            suffix = suffix.replace(/\[\[(?:GTA_PLATFORM_REVIEWS)?$|\[[^\n]*$/g, "");
+            html = prefix + renderTrustProofRow() + suffix;
+          }
+        }
+        html = html.replace(
+          /\[([^\]]+)\]\((https:\/\/share\.google\/[^)\s]+)\)/g,
+          (_, label, url) => {
+            const ui = currentWelcomeUiText();
+            return `<a class="google-review-link" href="${url}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(label)}"><img class="google-review-logo" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"><span class="google-review-copy"><strong>${escapeHtml(ui.google_reviews_title || label)}</strong><small>${escapeHtml(ui.reviews_fallback || "")}</small></span><span class="google-review-arrow" aria-hidden="true">↗</span></a>`;
+          }
+        );
+        html = html.replace(
+          /\[([^\]]+)\]\(https:\/\/www\.greentourasia\.com\/(?:brand-introduction|about)\)/g,
+          (_, label) => {
+            const ui = currentWelcomeUiText();
+            return `<a class="official-trust-link" href="https://www.greentourasia.com/about" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(label)}"><span class="official-trust-logo" aria-hidden="true">✓</span><span class="official-trust-copy"><strong>${escapeHtml(ui.credentials_title || label)}</strong><small>${escapeHtml(ui.credentials_subtitle || "")}</small></span><span class="official-trust-arrow" aria-hidden="true">↗</span></a>`;
+          }
+        );
+        html = html.replace(
+          /\[\[GTA_PLATFORM_REVIEWS\]\]/g,
+          () => {
+            const ui = currentWelcomeUiText();
+            return `<span class="platform-review-card"><span class="platform-review-logo" aria-hidden="true">★</span><span class="platform-review-copy"><strong>${escapeHtml(ui.platform_reviews_title || "GreenTourAI")}</strong><small>${escapeHtml(ui.platform_reviews_subtitle || "")}</small></span></span>`;
+          }
+        );
+        html = html.replace(/(^|\n)((?:&gt;[ \t]+[^\n]+(?:\n|$))+)/g, (_, prefix, quote) => {
+          const marker = `%%CODE_BLOCK_${blocks.length}%%`;
+          const body = quote.trim().split(/\n/)
+            .map(line => line.replace(/^&gt;[ \t]+/, ""))
+            .join("<br>");
+          blocks.push(`<blockquote>${body}</blockquote>`);
+          return `${prefix}${marker}`;
+        });
+        html = html.replace(/(^|\n)((?:-[ \t]+[^\n]+(?:\n|$))+)/g, (_, prefix, list) => {
+          const marker = `%%CODE_BLOCK_${blocks.length}%%`;
+          const items = list.trim().split(/\n/).map(line => line.replace(/^-[ \t]+/, ""));
+          blocks.push(`<ul>${items.map(item => `<li>${item}</li>`).join("")}</ul>`);
+          return `${prefix}${marker}`;
+        });
         html = html
-          .replace(/^### (.*)$/gm, "<h3>$1</h3>")
-          .replace(/^## (.*)$/gm, "<h2>$1</h2>")
-          .replace(/^# (.*)$/gm, "<h1>$1</h1>")
-          .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-          .replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(
+            /!\[([^\]]*)\]\((https:\/\/hk-cdn\.greentourasia\.com\/[^)\s]+)\)/g,
+            (_, alt, src) => `<img src="${thumbnailUrl(src)}" alt="${alt}" loading="lazy" style="display:block;width:100%;max-width:720px;height:auto;max-height:520px;object-fit:contain;margin:16px 0;border-radius:12px;">`
+          )
           .split(/\n{2,}/)
           .map(part => part.startsWith("<h") || part.startsWith("%%CODE_BLOCK_") ? part : `<p>${part.replace(/\n/g, "<br>")}</p>`)
           .join("");
@@ -714,31 +2020,30 @@
       function welcomeHtml() {
         return `
           <div class="welcome">
-            <div class="welcome-mark">GTA</div>
-            <h1>今天想分析什么？</h1>
-            <p>这是运行在当前服务器L40上的本地Qwen3.8 27B，可以分析数据、审核文章、理解截图，也可以一次上传多张视频关键帧。</p>
-            <div class="suggestions">
-              <button class="suggestion" data-prompt="帮我分析这组数据：展示10000、点击520、转化31、花费2800元。计算CTR、CVR、CPA，并给出建议。">分析广告转化数据</button>
-              <button class="suggestion" data-prompt="请审核下面这段文章，分别列出事实、风险、需要核实的信息和修改建议：">审核一篇待发布文章</button>
-              <button class="suggestion" data-prompt="根据我接下来提供的事实简报，写一篇结构清晰的新文章，不要补充未给出的数据。">根据简报生成文章</button>
-              <button class="suggestion" data-prompt="请按时间顺序分析我上传的多张视频关键帧，提取画面文字、核心卖点、风险和行动号召。">分析视频关键帧</button>
-            </div>
+            <div class="welcome-mark">GT</div>
+            <h1>想去哪里旅行？</h1>
+            <p>告诉我目的地、日期、人数和偏好，我可以结合绿色旅行网的行程与服务资料，为你规划更合适的方案。</p>
           </div>`;
+      }
+
+      function updateQuickPrompts() {
+        const chat = currentConversation();
+        const hasUserMessage = chat.messages.some(message => message.role === "user");
+        const hasSuggestedQuestions = els.quickPrompts.children.length > 0;
+        els.quickPrompts.hidden = streaming || hasUserMessage || !hasSuggestedQuestions;
       }
 
       function renderMessages() {
         const chat = currentConversation();
+        applyWelcomeUiText(currentWelcomeUiText());
+        applySuggestedQuestions(chat.suggestedQuestions || []);
         if (!chat.messages.length) {
           els.messages.innerHTML = welcomeHtml();
-          els.messages.querySelectorAll(".suggestion").forEach(button => {
-            button.addEventListener("click", () => {
-              els.prompt.value = button.dataset.prompt || "";
-              resizePrompt();
-              els.prompt.focus();
-            });
-          });
+          updateQuickPrompts();
           return;
         }
+
+        updateQuickPrompts();
 
         els.messages.innerHTML = chat.messages.map((message, index) => {
           const images = (message.images || []).length
@@ -752,9 +2057,15 @@
             : "";
           const content = message.pending
             ? `<div class="typing" aria-label="正在生成"><span></span><span></span><span></span></div>`
-            : `<div class="assistant-content">${renderMarkdown(message.text || "")}</div>`;
-          return `<article class="message-row assistant" data-index="${index}"><div class="message-inner"><div class="bubble">${reasoning}${content}</div></div></article>`;
+            : `<div class="assistant-content">${renderAssistantContent(message)}${renderHandoffOffer(message, index)}</div>`;
+          const retry = message.interrupted
+            ? `<button type="button" class="retry-generation" data-index="${index}">重新生成</button>`
+            : "";
+          const welcomeClass = message.campaignWelcome ? " campaign-welcome" : "";
+          return `<article class="message-row assistant${welcomeClass}" data-index="${index}"><div class="message-inner"><div class="bubble">${reasoning}${content}${retry}</div></div></article>`;
         }).join("");
+        bindRetryButtons();
+        bindHandoffButtons();
         scrollToBottom();
       }
 
@@ -770,14 +2081,54 @@
           : "";
         const body = message.pending && !message.text
           ? `<div class="typing"><span></span><span></span><span></span></div>`
-          : `<div class="assistant-content">${renderMarkdown(message.text || "")}</div>`;
-        row.innerHTML = reasoning + body;
+          : `<div class="assistant-content">${renderAssistantContent(message)}${renderHandoffOffer(message, index)}</div>`;
+        const retry = message.interrupted
+          ? `<button type="button" class="retry-generation" data-index="${index}">重新生成</button>`
+          : "";
+        row.innerHTML = reasoning + body + retry;
+        bindRetryButtons();
+        bindHandoffButtons();
         scrollToBottom();
       }
 
+      function scheduleAssistantUpdate(index) {
+        if (assistantUpdateTimers.has(index)) return;
+        const timer = setTimeout(() => {
+          assistantUpdateTimers.delete(index);
+          updateAssistant(index);
+        }, 80);
+        assistantUpdateTimers.set(index, timer);
+      }
+
+      function bindRetryButtons() {
+        els.messages.querySelectorAll(".retry-generation").forEach(button => {
+          button.addEventListener("click", () => retryMessage(Number(button.dataset.index)));
+        });
+      }
+
+      function bindHandoffButtons() {
+        els.messages.querySelectorAll(".handoff-button").forEach(button => {
+          button.addEventListener("click", () => {
+            const index = Number(button.dataset.index);
+            const message = currentConversation().messages[index];
+            if (!message?.handoffOffer) return;
+            message.contactText = message.handoffOffer;
+            message.handoffAccepted = true;
+            saveConversations();
+            updateAssistant(index);
+          });
+        });
+      }
+
       function renderHistory() {
-        els.history.innerHTML = conversations.map(chat => `
-          <button type="button" class="history-item ${chat.id === activeId ? "active" : ""}" data-id="${chat.id}">${escapeHtml(chat.title)}</button>
+        const visibleChats = conversations
+          .filter(chat => !chat.archived)
+          .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || b.createdAt - a.createdAt);
+        els.history.innerHTML = visibleChats.map(chat => `
+          <div class="history-row ${chat.id === activeId ? "active" : ""}" data-id="${chat.id}">
+            <button type="button" class="history-item" data-id="${chat.id}">${chat.pinned ? "⌖ " : ""}${escapeHtml(chat.title)}</button>
+            ${chat.messages.some(message => message.role === "user") ? `<button type="button" class="history-more" data-id="${chat.id}" aria-label="会话菜单">•••</button>` : ""}
+          </div>
         `).join("");
         els.history.querySelectorAll(".history-item").forEach(button => {
           button.addEventListener("click", () => {
@@ -788,6 +2139,74 @@
             closeSidebar();
           });
         });
+        els.history.querySelectorAll(".history-row").forEach(row => {
+          row.addEventListener("contextmenu", event => {
+            const chat = conversations.find(item => item.id === row.dataset.id);
+            if (!chat?.messages?.some(message => message.role === "user")) {
+              closeHistoryMenu();
+              return;
+            }
+            event.preventDefault();
+            openHistoryMenu(row.dataset.id, event.clientX, event.clientY);
+          });
+        });
+        els.history.querySelectorAll(".history-more").forEach(button => {
+          button.addEventListener("click", event => {
+            event.stopPropagation();
+            const rect = button.getBoundingClientRect();
+            openHistoryMenu(button.dataset.id, rect.right + 4, rect.top);
+          });
+        });
+      }
+
+      function openHistoryMenu(chatId, x, y) {
+        const chat = conversations.find(item => item.id === chatId);
+        if (!chat?.messages?.some(message => message.role === "user")) return closeHistoryMenu();
+        historyMenuChatId = chatId;
+        els.historyMenu.querySelector('[data-action="pin"] span').textContent = chat?.pinned ? "取消置顶" : "置顶聊天";
+        els.historyMenu.classList.add("visible");
+        const width = 146;
+        const height = 240;
+        els.historyMenu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - width - 8))}px`;
+        els.historyMenu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - height - 8))}px`;
+      }
+
+      function closeHistoryMenu() {
+        historyMenuChatId = "";
+        els.historyMenu.classList.remove("visible");
+      }
+
+      async function handleHistoryAction(action) {
+        const chat = conversations.find(item => item.id === historyMenuChatId);
+        if (!chat || streaming) return closeHistoryMenu();
+        if (action === "rename") {
+          const title = prompt("重命名对话", chat.title);
+          if (title?.trim()) chat.title = title.trim().slice(0, 80);
+        } else if (action === "pin") {
+          chat.pinned = !chat.pinned;
+        } else if (action === "archive") {
+          chat.archived = true;
+          if (chat.id === activeId) {
+            const next = conversations.find(item => !item.archived && item.id !== chat.id);
+            activeId = next?.id || createConversation();
+            renderMessages();
+          }
+        } else if (action === "delete") {
+          if (!confirm(`删除“${chat.title}”？`)) return closeHistoryMenu();
+          conversations = conversations.filter(item => item.id !== chat.id);
+          if (chat.id === activeId) activeId = conversations.find(item => !item.archived)?.id || createConversation();
+          renderMessages();
+        } else if (action === "share") {
+          const text = chat.messages.map(message => `${message.role === "user" ? "我" : "GreenTourAI"}：${message.text || ""}`).join("\n\n");
+          if (navigator.share) await navigator.share({ title: chat.title, text });
+          else {
+            await navigator.clipboard.writeText(text);
+            alert("对话内容已复制到剪贴板");
+          }
+        }
+        saveConversations();
+        closeHistoryMenu();
+        renderHistory();
       }
 
       function scrollToBottom() {
@@ -861,26 +2280,177 @@
       }
 
       function apiMessages(chat) {
-        const result = [{ role: "system", content: SYSTEM_PROMPT }];
-        chat.messages.forEach(message => {
-          if (message.role === "assistant" && message.pending) return;
-          if (message.role === "user" && message.images?.length) {
-            result.push({
-              role: "user",
-              content: [
-                ...message.images.map(url => ({ type: "image_url", image_url: { url } })),
-                { type: "text", text: message.text || "请分析这些图片。" }
-              ]
-            });
-          } else {
-            result.push({ role: message.role, content: message.text || "" });
-          }
-        });
-        return result;
+        const message = [...chat.messages].reverse().find(item => item.role === "user");
+        if (!message) return [];
+        if (message.images?.length) {
+          return [{
+            role: "user",
+            content: [
+              ...message.images.map(url => ({ type: "image_url", image_url: { url } })),
+              { type: "text", text: message.text || "请分析这些图片。" }
+            ]
+          }];
+        }
+        return [{ role: "user", content: message.text || "" }];
       }
 
-      async function sendMessage() {
+      async function cancelRequest(requestId) {
+        if (!requestId) return;
+        try {
+          await fetch(`${ROUTER_URL}/_gta/requests/${encodeURIComponent(requestId)}`, {
+            method: "DELETE"
+          });
+        } catch (_) {
+          // The old connection may already be gone; retry can still continue.
+        }
+      }
+
+      async function retryMessage(assistantIndex) {
+        if (streaming) return;
+        const chat = currentConversation();
+        const assistant = chat.messages[assistantIndex];
+        const user = chat.messages[assistantIndex - 1];
+        if (!assistant?.interrupted || user?.role !== "user") return;
+
+        await cancelRequest(assistant.requestId);
+        chat.messages.splice(assistantIndex - 1, 2);
+        els.prompt.value = user.text || "";
+        attachments = [...(user.images || [])];
+        saveConversations();
+        renderMessages();
+        renderAttachments();
+        resizePrompt();
+        await sendMessage({ recovery: true });
+      }
+
+      function applySuggestedQuestions(questions) {
+        const values = Array.isArray(questions) ? questions : [];
+        els.quickPrompts.replaceChildren(...values.slice(0, 6).map(question => {
+          const button = document.createElement("button");
+          button.className = "quick-prompt";
+          button.type = "button";
+          const label = document.createElement("span");
+          label.className = "quick-prompt-label";
+          label.textContent = String(question);
+          button.append(label);
+          return button;
+        }));
+      }
+
+      function applyWelcomeUiText(uiText) {
+        const ui = uiText && typeof uiText === "object" ? uiText : {};
+        const questionsHeading = String(ui.suggested_questions_heading || "");
+        els.quickPrompts.dataset.heading = questionsHeading;
+        if (questionsHeading) els.quickPrompts.setAttribute("aria-label", questionsHeading);
+        els.prompt.placeholder = String(ui.composer_placeholder || "GreenTourAI");
+      }
+
+      async function requestWelcome() {
+        if (streaming || !landingKeyword.trim()) return;
+        const chat = currentConversation();
+        if (chat.messages.length) return;
+        const assistantIndex = chat.messages.length;
+        chat.messages.push({
+          role: "assistant",
+          text: "",
+          reasoning: "",
+          pending: true,
+          interrupted: false,
+          campaignWelcome: true,
+          welcomeUiVersion: WELCOME_UI_VERSION
+        });
+        renderMessages();
+        streaming = true;
+        controller = new AbortController();
+        updateSendState();
+        try {
+          const browserLocale = "zh-CN";
+          const browserCountry = "CN";
+          const response = await fetch(CHAT_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-GTA-Locale": browserLocale,
+              "X-GTA-Country": browserCountry
+            },
+            body: JSON.stringify({
+              model: "green-travel-ai",
+              keyword: landingKeyword,
+              stream: true
+            }),
+            signal: controller.signal
+          });
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(`HTTP ${response.status}: ${detail.slice(0, 300)}`);
+          }
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let done = false;
+          while (!done) {
+            const chunk = await reader.read();
+            done = chunk.done;
+            buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !done });
+            const events = buffer.split(/\r?\n\r?\n/);
+            buffer = events.pop() || "";
+            for (const event of events) {
+              const data = event.split(/\r?\n/)
+                .filter(line => line.startsWith("data:"))
+                .map(line => line.slice(5).trim())
+                .join("\n");
+              if (!data) continue;
+              if (data === "[DONE]") {
+                done = true;
+                await reader.cancel();
+                break;
+              }
+              const payload = JSON.parse(data);
+              const target = chat.messages[assistantIndex];
+              if (payload.type === "image_group" && Array.isArray(payload.images)) {
+                target.knowledgeImages = payload.images;
+              } else if (payload.type === "welcome_ui" && payload.ui_text && typeof payload.ui_text === "object") {
+                target.welcomeUiText = payload.ui_text;
+                applyWelcomeUiText(target.welcomeUiText);
+              } else if (payload.type === "review_section") {
+                target.reviewSection = true;
+                void loadReviewSummary(target, assistantIndex).catch(() => { });
+              } else if (payload.type === "handoff_offer" && Array.isArray(payload.contacts)) {
+                target.handoffOffer = payload;
+              } else if (payload.type === "suggested_questions") {
+                chat.suggestedQuestions = Array.isArray(payload.questions)
+                  ? payload.questions.slice(0, 6).map(String)
+                  : [];
+                applySuggestedQuestions(chat.suggestedQuestions);
+              } else {
+                const delta = payload.choices?.[0]?.delta || {};
+                if (typeof delta.content === "string") target.text += delta.content;
+              }
+              updateAssistant(assistantIndex);
+            }
+          }
+          chat.messages[assistantIndex].pending = false;
+        } catch (error) {
+          const target = chat.messages[assistantIndex];
+          target.pending = false;
+          target.text = error.name === "AbortError"
+            ? "欢迎内容加载已停止。"
+            : `欢迎内容加载失败：${error.message}`;
+          target.interrupted = true;
+        } finally {
+          streaming = false;
+          controller = null;
+          saveConversations();
+          renderHistory();
+          updateAssistant(assistantIndex);
+          updateQuickPrompts();
+          updateSendState();
+        }
+      }
+
+      async function sendMessage(options = {}) {
         if (streaming) {
+          void cancelRequest(activeRequestId);
           controller?.abort();
           return;
         }
@@ -898,11 +2468,21 @@
           image_count: images.length
         });
         chat.messages.push({ role: "user", text, images });
-        if (chat.messages.length === 1) {
+        if (chat.messages.filter(message => message.role === "user").length === 1) {
           chat.title = (text || "图片分析").slice(0, 24);
         }
         const assistantIndex = chat.messages.length;
-        chat.messages.push({ role: "assistant", text: "", reasoning: "", pending: true });
+        const requestId = uid();
+        activeRequestId = requestId;
+        chat.messages.push({
+          role: "assistant",
+          text: "",
+          reasoning: "",
+          pending: true,
+          interrupted: false,
+          requestId
+        });
+        saveConversations();
         attachments = [];
         els.prompt.value = "";
         resizePrompt();
@@ -915,17 +2495,26 @@
         updateSendState();
 
         try {
-          const thinking = els.thinking.checked;
-          const response = await fetch(`http://${window.location.hostname}:7100/v1/chat/completions`, {
+          const thinking = els.thinking?.checked ?? false;
+          const browserLocale = navigator.language || "";
+          const browserCountry = (browserLocale.split(/[-_]/)[1] || "").toUpperCase();
+          const response = await fetch(CHAT_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "X-GTA-Request-ID": requestId,
+              "X-GTA-Session-ID": chat.id,
+              "X-GTA-Priority": options.recovery ? "P0" : "P1",
+              "X-GTA-Locale": browserLocale,
+              "X-GTA-Country": browserCountry
+            },
             body: JSON.stringify({
               model: "green-travel-ai",
               messages: apiMessages(chat),
               stream: true,
-              chat_template_kwargs: { enable_thinking: thinking },
-              max_tokens: thinking ? 4096 : 2048,
-              temperature: thinking ? .7 : .2
+              chat_template_kwargs: { enable_thinking: options.recovery ? false : thinking },
+              max_tokens: options.recovery ? 512 : (thinking ? 2048 : 512),
+              temperature: options.recovery ? .2 : (thinking ? .7 : .2)
             }),
             signal: controller.signal
           });
@@ -949,16 +2538,41 @@
                 .filter(line => line.startsWith("data:"))
                 .map(line => line.slice(5).trim())
                 .join("\n");
-              if (!data || data === "[DONE]") continue;
+              if (!data) continue;
+              if (data === "[DONE]") {
+                done = true;
+                await reader.cancel();
+                break;
+              }
               const payload = JSON.parse(data);
               if (payload.error) throw new Error(payload.error);
-              const delta = payload.choices?.[0]?.delta || {};
               const target = chat.messages[assistantIndex];
+              if (payload.type === "image_group" && Array.isArray(payload.images)) {
+                target.knowledgeImages = payload.images;
+                updateAssistant(assistantIndex);
+                continue;
+              }
+              if (payload.type === "contact_text" && Array.isArray(payload.contacts)) {
+                target.contactText = payload;
+                updateAssistant(assistantIndex);
+                continue;
+              }
+              if (payload.type === "handoff_offer" && Array.isArray(payload.contacts)) {
+                target.handoffOffer = payload;
+                updateAssistant(assistantIndex);
+                continue;
+              }
+              const delta = payload.choices?.[0]?.delta || {};
+              const firstVisibleContent = !target.text && typeof delta.content === "string" && delta.content.length > 0;
               if (typeof delta.content === "string") target.text += delta.content;
               const thought = delta.reasoning ?? delta.reasoning_content;
               if (typeof thought === "string") target.reasoning += thought;
-              target.pending = false;
-              updateAssistant(assistantIndex);
+              if (firstVisibleContent) {
+                // 首个正文 token 立即替换加载动画，后续 token 再使用节流刷新。
+                updateAssistant(assistantIndex);
+              } else {
+                scheduleAssistantUpdate(assistantIndex);
+              }
             }
           }
           const target = chat.messages[assistantIndex];
@@ -974,39 +2588,30 @@
             target.text ||= "已停止生成。";
           } else {
             target.text = `请求失败：${error.message}`;
+            target.interrupted = true;
           }
         } finally {
+          const pendingUpdate = assistantUpdateTimers.get(assistantIndex);
+          if (pendingUpdate) clearTimeout(pendingUpdate);
+          assistantUpdateTimers.delete(assistantIndex);
           const target = chat.messages[assistantIndex];
           console.info("[GTA AI Web] 模型返回", {
             content: target.text,
-            reasoning: target.reasoning
+            reasoning: target.reasoning,
+            knowledgeImageCount: target.knowledgeImages?.length || 0
           });
           await writeServerLog("模型返回", {
             content: target.text,
-            reasoning: target.reasoning
+            reasoning: target.reasoning,
+            image_count: target.knowledgeImages?.length || 0
           });
           streaming = false;
           controller = null;
+          activeRequestId = "";
           saveConversations();
           renderHistory();
           updateAssistant(assistantIndex);
           updateSendState();
-        }
-      }
-
-      async function checkHealth() {
-        try {
-          const response = await fetch(`http://${window.location.hostname}:7100/health/live`, { cache: "no-store" });
-          const body = await response.json();
-          if (response.ok && body.state === "ok") {
-            els.statusDot.className = "status-dot ready";
-            els.statusText.textContent = "模型就绪";
-          } else {
-            throw new Error("not ready");
-          }
-        } catch (_) {
-          els.statusDot.className = "status-dot error";
-          els.statusText.textContent = "模型未就绪";
         }
       }
 
@@ -1023,6 +2628,13 @@
         }
       });
       els.send.addEventListener("click", sendMessage);
+      els.quickPrompts.addEventListener("click", event => {
+        const button = event.target.closest(".quick-prompt");
+        if (!button || streaming) return;
+        els.prompt.value = button.textContent.trim();
+        resizePrompt();
+        void sendMessage();
+      });
       els.attach.addEventListener("click", () => els.input.click());
       els.input.addEventListener("change", event => {
         addFiles(event.target.files);
@@ -1042,6 +2654,7 @@
         renderMessages();
         closeSidebar();
         els.prompt.focus();
+        void requestWelcome();
       });
       els.clearHistory.addEventListener("click", () => {
         if (streaming || !confirm("清空当前浏览器中的全部对话历史？")) return;
@@ -1055,7 +2668,41 @@
         els.backdrop.classList.add("visible");
       });
       els.backdrop.addEventListener("click", closeSidebar);
+      els.reviewDrawerBackdrop.addEventListener("click", closeReviewDrawer);
+      els.reviewDrawerClose.addEventListener("click", closeReviewDrawer);
+      let previousMessageScrollTop = 0;
+      els.messages.addEventListener("scroll", () => {
+        const currentScrollTop = Math.max(0, els.messages.scrollTop);
+        if (currentScrollTop <= 8) {
+          els.mobileTopbar.classList.remove("hidden");
+        } else if (currentScrollTop > previousMessageScrollTop + 4) {
+          els.mobileTopbar.classList.add("hidden");
+        } else if (currentScrollTop < previousMessageScrollTop - 4) {
+          els.mobileTopbar.classList.remove("hidden");
+        }
+        previousMessageScrollTop = currentScrollTop;
+      }, { passive: true });
+      els.messages.addEventListener("click", event => {
+        if (event.target.closest(".google-review-drawer-button")) openReviewDrawer();
+        if (event.target.closest(".platform-review-drawer-button")) openPlatformReviewDrawer();
+      });
+      els.historyMenu.addEventListener("click", event => {
+        event.stopPropagation();
+        const button = event.target.closest("button[data-action]");
+        if (button) void handleHistoryAction(button.dataset.action);
+      });
+      document.addEventListener("click", event => {
+        if (!event.target.closest(".history-menu") && !event.target.closest(".history-more")) closeHistoryMenu();
+      });
+      document.addEventListener("contextmenu", event => {
+        if (!event.target.closest(".history-row") && !event.target.closest(".history-menu")) closeHistoryMenu();
+      });
+      window.addEventListener("resize", closeHistoryMenu);
       document.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+          closeHistoryMenu();
+          closeReviewDrawer();
+        }
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
           event.preventDefault();
           if (!streaming) els.newChat.click();
@@ -1066,10 +2713,10 @@
       renderMessages();
       renderAttachments();
       resizePrompt();
-      checkHealth();
-      setInterval(checkHealth, 30000);
+      void requestWelcome();
       els.prompt.focus();
     })();
   </script>
 </body>
+
 </html>

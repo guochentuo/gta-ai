@@ -20,8 +20,18 @@ served_model_name=$VLLM_SERVED_MODEL_NAME
 adapter_args=()
 adapter_volume=()
 speculative_args=()
+prefix_caching_args=()
+chunked_prefill_args=()
 if [ -n "${VLLM_SPECULATIVE_CONFIG:-}" ]; then
     speculative_args=(--speculative-config "$VLLM_SPECULATIVE_CONFIG")
+fi
+if [ "${VLLM_ENABLE_PREFIX_CACHING:-false}" = true ]; then
+    prefix_caching_args=(--enable-prefix-caching)
+fi
+if [ "${VLLM_ENABLE_CHUNKED_PREFILL:-true}" = true ]; then
+    chunked_prefill_args=(--enable-chunked-prefill)
+else
+    chunked_prefill_args=(--no-enable-chunked-prefill)
 fi
 if [ -L "$VLLM_ACTIVE_ADAPTER_PATH" ]; then
     adapter_path=$(readlink -f "$VLLM_ACTIVE_ADAPTER_PATH")
@@ -56,10 +66,16 @@ exec /usr/bin/podman run --rm \
     --port 8000 \
     --max-model-len "$VLLM_MAX_MODEL_LEN" \
     --max-num-seqs "$VLLM_MAX_NUM_SEQS" \
+    --max-num-batched-tokens "$VLLM_MAX_NUM_BATCHED_TOKENS" \
+    --scheduling-policy "$VLLM_SCHEDULING_POLICY" \
     --kv-cache-dtype "$VLLM_KV_CACHE_DTYPE" \
     --gpu-memory-utilization "$VLLM_GPU_MEMORY_UTILIZATION" \
     --reasoning-parser qwen3 \
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_coder \
+    "${prefix_caching_args[@]}" \
+    "${chunked_prefill_args[@]}" \
     "${speculative_args[@]}" \
-    "${adapter_args[@]}"
+    "${adapter_args[@]}" \
+    > >(/opt/gta-ai/qwen-llm/.venv/bin/python \
+        /opt/gta-ai/qwen-llm/deploy/vllm/log_forwarder.py) 2>&1

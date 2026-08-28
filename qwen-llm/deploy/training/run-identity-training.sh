@@ -15,7 +15,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 mapfile -t job < <(
-    /opt/gta-ai/qwen-llm/.venv/bin/python - "$TRAIN_PENDING_MANIFEST" "$TRAIN_DATASET_PATH" <<'PY'
+    "$TRAIN_PYTHON" - "$TRAIN_PENDING_MANIFEST" "$TRAIN_DATASET_PATH" <<'PY'
 import hashlib
 import json
 import re
@@ -43,7 +43,7 @@ print(dataset)
 parent_adapter = str(manifest.get("parent_adapter_path", ""))
 if parent_adapter:
     parent = Path(parent_adapter).resolve()
-    adapter_root = Path("/opt/gta-ai/qwen-llm/data/training/adapters").resolve()
+    adapter_root = Path("/opt/gta-ai/27b/training/adapters").resolve()
     if not parent.is_relative_to(adapter_root):
         raise SystemExit("parent adapter is outside the managed adapter root")
     if not (parent / "adapter_config.json").is_file():
@@ -63,14 +63,19 @@ report_file=$runtime_dir/evaluation.json
 candidate_file=$TRAIN_RUNTIME_ROOT/candidate.json
 log_file=/opt/gta-ai/logs/gta.ai.training.log
 
-mkdir -p "$output_dir" "$runtime_dir" "$(dirname -- "$log_file")"
+mkdir -p \
+    "$output_dir" \
+    "$runtime_dir" \
+    "$(dirname -- "$log_file")" \
+    /opt/gta-ai/data/cache/huggingface \
+    /opt/gta-ai/data/cache/vllm
 exec > >(tee -a "$log_file") 2>&1
 echo "[$(date --iso-8601=seconds)] identity fine-tuning revision=$revision"
 
 adapter_path=
 if [ -f "$completion_file" ]; then
     adapter_path=$(
-        /opt/gta-ai/qwen-llm/.venv/bin/python - "$completion_file" <<'PY'
+        "$TRAIN_PYTHON" - "$completion_file" <<'PY'
 import json
 import sys
 print(json.load(open(sys.argv[1], encoding="utf-8"))["adapter_path"])
@@ -88,11 +93,11 @@ if [ -z "$adapter_path" ] || [ ! -f "$adapter_path/adapter_config.json" ]; then
     cleanup
     parent_mount=()
     adapter_args=()
-    learning_rate=3e-5
+    learning_rate=1e-5
     if [ -n "$parent_adapter" ]; then
         parent_mount=(--volume "$parent_adapter:/models/parent-adapter:ro")
         adapter_args=(--adapters /models/parent-adapter)
-        learning_rate=1e-5
+        learning_rate=3e-6
     fi
     /usr/bin/podman run --rm \
         --name "$training_container" \
@@ -103,7 +108,7 @@ if [ -z "$adapter_path" ] || [ ! -f "$adapter_path/adapter_config.json" ]; then
         --env HF_DEACTIVATE_ASYNC_LOAD=1 \
         --env IMAGE_MAX_TOKEN_NUM=256 \
         --env VIDEO_MAX_TOKEN_NUM=16 \
-        --volume "$TRAIN_MODEL_PATH:/models/Qwen3.6-27B:ro" \
+        --volume "$TRAIN_MODEL_PATH:/models/Qwen3.8-27B:ro" \
         --volume "$dataset_path:/training/identity.jsonl:ro" \
         --volume "$output_dir:/output:rw" \
         "${parent_mount[@]}" \
@@ -111,7 +116,7 @@ if [ -z "$adapter_path" ] || [ ! -f "$adapter_path/adapter_config.json" ]; then
         --entrypoint swift \
         "$TRAIN_IMAGE" \
         sft \
-        --model /models/Qwen3.6-27B \
+        --model /models/Qwen3.8-27B \
         "${adapter_args[@]}" \
         --dataset /training/identity.jsonl \
         --tuner_type lora \
@@ -123,7 +128,7 @@ if [ -z "$adapter_path" ] || [ ! -f "$adapter_path/adapter_config.json" ]; then
         --bnb_4bit_use_double_quant true \
         --freeze_vit true \
         --freeze_aligner true \
-        --target_modules all-linear \
+        --target_regex '.*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj|in_proj_qkv|in_proj_z|in_proj_a|in_proj_b|out_proj)' \
         --lora_rank 8 \
         --lora_alpha 16 \
         --lora_dropout 0.05 \
@@ -150,7 +155,7 @@ if [ -z "$adapter_path" ] || [ ! -f "$adapter_path/adapter_config.json" ]; then
 
     adapter_path=$(find "$output_dir" -type f -name adapter_config.json -printf '%T@ %h\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
     test -n "$adapter_path"
-    /opt/gta-ai/qwen-llm/.venv/bin/python - "$completion_file" "$adapter_path" "$revision" <<'PY'
+    "$TRAIN_PYTHON" - "$completion_file" "$adapter_path" "$revision" <<'PY'
 import json
 import os
 import sys
@@ -174,12 +179,12 @@ cleanup
     --security-opt=label=disable \
     --ipc=host \
     --publish "127.0.0.1:$TRAIN_VALIDATION_PORT:8000" \
-    --volume /opt/gta-ai/models/Qwen3.6-27B-FP8:/models/Qwen3.6-27B-FP8:ro \
+    --volume "$TRAIN_VALIDATION_MODEL_PATH:/models/Qwen3.8-27B-FP8:ro" \
     --volume "$adapter_path:/models/identity-adapter:ro" \
     --volume /opt/gta-ai/data/cache/huggingface:/root/.cache/huggingface:rw \
     --volume /opt/gta-ai/data/cache/vllm:/root/.cache/vllm:rw \
     docker.io/vllm/vllm-openai@sha256:7a0f0fdd2771464b6976625c2b2d5dd46f566aa00fbc53eceab86ef50883da90 \
-    /models/Qwen3.6-27B-FP8 \
+    /models/Qwen3.8-27B-FP8 \
     --served-model-name "$TRAIN_BASE_MODEL_NAME" \
     --host 0.0.0.0 \
     --port 8000 \
@@ -208,13 +213,13 @@ if [ "$ready" != true ]; then
     exit 1
 fi
 
-/opt/gta-ai/qwen-llm/.venv/bin/python "$TRAIN_EVAL_SCRIPT" \
+"$TRAIN_PYTHON" "$TRAIN_EVAL_SCRIPT" \
     --cases "$TRAIN_EVAL_CASES" \
     --endpoint "http://127.0.0.1:$TRAIN_VALIDATION_PORT/v1/chat/completions" \
     --model "$TRAIN_MODEL_NAME" \
     --report "$report_file"
 
-/opt/gta-ai/qwen-llm/.venv/bin/python - \
+"$TRAIN_PYTHON" - \
     "$candidate_file" "$revision" "$adapter_path" "$dataset_hash" "$report_file" <<'PY'
 import json
 import os

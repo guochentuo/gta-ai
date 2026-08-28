@@ -5,9 +5,11 @@ description = "GTA AI模块工作区。"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+  "confluent-kafka>=2.8,<3",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "pydantic>=2.10,<3",
+  "redis>=5.2,<7",
   "uvicorn[standard]>=0.34,<1",
 ]
 
@@ -40,4 +42,8 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 "faster-whisper/app.py" = ["RUF003"]
 "siglip/app.py" = ["B008", "RUF002"]
 "paddle-ocr/app.py" = ["B008", "RUF002", "RUF003"]
-"qwen-llm/router/app.py" = ["RUF001", "RUF003"]
+"qwen-llm/router/app.py" = ["RUF001", "RUF002", "RUF003"]
+"qwen-llm/router/services/pricing_service.py" = ["RUF001", "RUF002", "RUF003"]
+"qwen-llm/router/services/context_classification_service.py" = ["RUF001", "RUF002", "RUF003"]
+"qwen-llm/tests/test_pricing_service.py" = ["RUF001", "RUF003"]
+"qwen-llm/router/summarization.py" = ["RUF001", "RUF003"]

@@ -1,18 +1,25 @@
 FROM docker.io/vllm/vllm-openai@sha256:7a0f0fdd2771464b6976625c2b2d5dd46f566aa00fbc53eceab86ef50883da90
 
-RUN python3 -m pip install --no-cache-dir --upgrade \
-      "ms-swift==4.4.2" \
+RUN python3 -m pip install --no-cache-dir --upgrade --no-deps \
+      "ms-swift==4.5.2" \
+    && python3 -m pip install --no-cache-dir --upgrade \
       "transformers==5.2.*" \
       "qwen_vl_utils>=0.0.14" \
-      "peft>=0.18" \
+      "peft>=0.18,<0.20" \
       "bitsandbytes>=0.49" \
+      "datasets>=3.0,<4.8.5" \
+      "trl>=0.15,<1.0" \
+      "pandas>=2.0" \
+      "decord>=0.6" \
+      "addict" "attrdict" "binpacking" "dacite" "json-repair" \
+      "transformers-stream-generator" "zstandard" \
     && python3 -c 'import swift; print(swift.__version__)'
 
 COPY patch_transformers_bnb_loading.py /tmp/patch_transformers_bnb_loading.py
 RUN python3 /tmp/patch_transformers_bnb_loading.py \
     && rm /tmp/patch_transformers_bnb_loading.py
 
-# Qwen3.6 的 3:1 Gated DeltaNet 层需要这两个训练内核; 否则会退回慢速 Torch 实现。
+# Qwen3.8 的 3:1 Gated DeltaNet 层需要这两个训练内核; 否则会退回慢速 Torch 实现。
 RUN MAX_JOBS=8 python3 -m pip install --no-cache-dir --no-build-isolation \
       "flash-linear-attention[cuda]==0.5.2" \
       "causal-conv1d==1.6.2.post1" \

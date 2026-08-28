@@ -1,0 +1,21 @@
+[Unit]
+Description=gta-ai Qwen CPU conversation summarizer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/podman rm --force --time 0 gta-ai-qwen-summarizer
+ExecStart=/opt/gta-ai/qwen-llm/bin/run-summarizer
+ExecStop=/usr/bin/podman stop --time 10 gta-ai-qwen-summarizer
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=300
+TimeoutStopSec=30
+Nice=10
+CPUWeight=20
+CPUQuota=5000%
+MemoryMax=12G
+
+[Install]
+WantedBy=multi-user.target

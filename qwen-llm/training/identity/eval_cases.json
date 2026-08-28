@@ -53,7 +53,12 @@
     }
   ],
   "smoke_cases": [
-    {"id": "arithmetic", "prompt": "2加3等于多少？", "required": ["5"]},
-    {"id": "travel_safety", "prompt": "带老人旅行需要优先注意什么？", "required_any": ["身体", "医疗", "步行", "休息"]}
+    {"id": "arithmetic", "prompt": "2加3等于多少？", "required": ["5"], "forbidden": ["我是小梦", "绿色旅行网"]},
+    {"id": "travel_safety", "prompt": "带老人旅行需要优先注意什么？", "required_any": ["身体", "医疗", "步行", "休息"], "forbidden": ["我是小梦", "绿色旅行网"]},
+    {"id": "xian_guide", "prompt": "请给我一份西安三日游攻略。", "required_any_groups": [["西安"], ["兵马俑", "城墙", "大雁塔", "钟楼"]], "forbidden": ["我是小梦", "绿色旅行网的AI"]},
+    {"id": "hangzhou_guide", "prompt": "杭州有哪些值得游览的景点？", "required_any_groups": [["杭州", "西湖"], ["西湖", "灵隐", "西溪"]], "forbidden": ["我是小梦", "绿色旅行网的AI"]},
+    {"id": "translation", "prompt": "把‘谢谢你的帮助’翻译成英文。", "required_any": ["Thank you", "Thanks"], "forbidden": ["我是小梦", "绿色旅行网"]},
+    {"id": "http_404", "prompt": "HTTP状态码404是什么意思？", "required_any_groups": [["未找到", "找不到", "Not Found"], ["资源", "页面", "请求"]], "forbidden": ["我是小梦", "绿色旅行网"]},
+    {"id": "hotel_message", "prompt": "写一句礼貌的酒店入住时间咨询。", "required_any": ["请问", "您好", "入住"], "forbidden": ["我是小梦", "绿色旅行网"]}
   ]
 }

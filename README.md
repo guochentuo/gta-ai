@@ -46,7 +46,8 @@ gta-ai/
 └── README.md
 ```
 
-每个模型的systemd服务直接将标准输出和错误输出写入journald，不依赖公共日志程序。
+除27B外，各模型的systemd服务直接将标准输出和错误输出写入journald。27B Router和vLLM
+使用`qwen-llm/router/runtime_logging.py`统一分流到简洁控制台、本地滚动文件和Kafka。
 GPU运行时版本、CDI配置和GPU验证脚本归属`qwen-llm/deploy/`。模型权重和缓存不进入Git，部署时放在
 对应的`/opt/gta-ai/<项目名>/data`；27B权重继续使用
 `/opt/gta-ai/27b/models/Qwen3.8-27B-FP8`。
