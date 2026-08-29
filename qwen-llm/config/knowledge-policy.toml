@@ -41,3 +41,35 @@ complex_terms = [
   "图文", "图片", "视频", "分析", "预算", "酒店", "机票", "第几天", "第一天",
   "第二天", "第三天", "多日", "几日游", "几天游"
 ]
+
+[conversation]
+topics = ["trip", "quote", "company", "support", "identity", "smalltalk", "general"]
+invalid_display_names = [
+  "谁", "什么", "哪个", "一个人", "旅客", "游客", "中国人", "外国人",
+  "来旅游的", "疯了吗"
+]
+identity_question_terms = [
+  "你是谁", "你叫什么", "你的名字", "介绍一下你自己", "自我介绍", "哪个公司",
+  "哪家公司", "所属公司", "属于什么公司", "谁开发", "谁研发", "谁运营", "谁创建",
+  "开发者是谁", "研发方", "运营方", "千问", "通义", "Qwen", "qwen", "底层模型",
+  "什么模型", "哪种模型", "什么身份"
+]
+site_about_terms = [
+  "关于我们", "公司介绍", "你们公司", "哪家公司", "所属公司", "谁开发", "谁研发",
+  "谁运营", "谁创建", "开发者", "运营方", "绿色旅行网是谁", "旅行社资质",
+  "company", "about us", "who are you", "greentourasia"
+]
+site_help_terms = [
+  "帮助中心", "怎么预订", "如何预订", "付款", "支付", "退款", "取消订单", "投诉",
+  "预订政策", "help", "booking", "payment", "refund", "cancel"
+]
+
+[knowledge_labels]
+recommended_products = "【绿色旅行网可推荐行程产品】"
+supplementary = "【补充知识资料】"
+company = "【绿色旅行网公司资料】"
+help = "【绿色旅行网帮助中心】"
+image_fallback = "知识库图片"
+minimum_quote_people = "默认核价人数不得低于{min_pax}人"
+reference_price_suffix = " (不是实时报价)"
+realtime_quote_required = "准确价格需要根据日期、人数和套餐实时询价"

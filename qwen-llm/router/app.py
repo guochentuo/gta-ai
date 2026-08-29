@@ -29,7 +29,6 @@ from .runtime_logging import shutdown as shutdown_logging
 from .services.chat_pipeline_service import (
     COMPANY_RECOMMENDATION_PROMPT,
     CONFIRMATION_FOLLOWUP_PROMPT,
-    EXPLICIT_CONTACT_PROMPT,
     LANGUAGE_MATCH_PROMPT,
     PLAYFUL_QUERY_PROMPT,
     QUESTION_HISTORY_PROMPT,
@@ -47,10 +46,11 @@ from .services.chat_pipeline_service import (
     _latest_user_text,
     _response_text,
     _response_usage,
-    contact_text_event,
+    contact_request_event,
     contextual_retrieval_query,
     conversation_may_need_retrieval,
     direct_retrieval_query,
+    generate_handoff_offer,
     handoff_offer_event,
     inject_knowledge_tool,
     inject_persona,
@@ -876,8 +876,9 @@ def create_router_app(
         image_search_query = current_query
         image_search_query_normalized = bool(re.search(r"[\u4e00-\u9fff]", image_search_query))
         stream_requested = False
-        contact_text_required = False
+        contact_request_required = False
         handoff_offer_required = False
+        handoff_offer_task: asyncio.Task[dict[str, str]] | None = None
         explicit_contact_request = False
         additional_system_prompt = ""
         cpu_simple_route = False
@@ -889,7 +890,7 @@ def create_router_app(
             try:
                 stream_requested = json.loads(original_chat_body).get("stream") is True
                 explicit_contact_request = query_explicitly_requests_contact(current_query)
-                contact_text_required = stream_requested and explicit_contact_request
+                contact_request_required = stream_requested and explicit_contact_request
                 handoff_offer_required = (
                     stream_requested and image_response_allowed and not explicit_contact_request
                 )
@@ -901,7 +902,6 @@ def create_router_app(
                     for part in (
                         SIMPLE_CHAT_PROMPT if cpu_simple_route else "",
                         language_style_prompt(current_query, locale_hint, country_hint),
-                        EXPLICIT_CONTACT_PROMPT if explicit_contact_request else "",
                         (
                             COMPANY_RECOMMENDATION_PROMPT
                             if is_company_recommendation_query(current_query)
@@ -992,6 +992,21 @@ def create_router_app(
         admission_owner = "router:" + hashlib.sha256(request_id.encode()).hexdigest()[:32]
         timeout = httpx.Timeout(runtime_config.request_timeout_seconds, connect=2)
         client = httpx.AsyncClient(timeout=timeout, transport=transport)
+        if handoff_offer_required:
+            handoff_offer_task = asyncio.create_task(
+                generate_handoff_offer(
+                    current_query,
+                    locale_hint=locale_hint,
+                    country_hint=country_hint,
+                    url=runtime_config.welcome_localization_url,
+                    model=runtime_config.welcome_localization_model,
+                    timeout_seconds=min(
+                        runtime_config.welcome_localization_timeout_seconds,
+                        runtime_config.request_timeout_seconds,
+                    ),
+                    transport=transport,
+                )
+            )
         disconnect_watcher = (
             asyncio.create_task(_wait_for_request_cancel(request, tracked.cancel_event))
             if is_workload
@@ -1002,6 +1017,7 @@ def create_router_app(
 
         async def cleanup() -> None:
             nonlocal cleaned, inference_gate, admission_lease, admission_heartbeat
+            nonlocal handoff_offer_task
             async with cleanup_lock:
                 if cleaned:
                     return
@@ -1013,6 +1029,11 @@ def create_router_app(
                     admission_heartbeat = None
                 if disconnect_watcher is not None:
                     disconnect_watcher.cancel()
+                if handoff_offer_task is not None and not handoff_offer_task.done():
+                    handoff_offer_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await handoff_offer_task
+                    handoff_offer_task = None
                 await client.aclose()
                 _release_inference_gate(inference_gate)
                 inference_gate = None
@@ -1236,7 +1257,7 @@ def create_router_app(
             next_answer_image_search_chars = 180
             answer_images_inserted = False
             collected_image_candidates: list[tuple[str, str]] = []
-            contact_text_inserted = False
+            contact_request_inserted = False
             handoff_offer_inserted = False
 
             async def process_chunk(chunk: bytes, *, final: bool = False) -> bytes:
@@ -1249,7 +1270,7 @@ def create_router_app(
                 nonlocal initial_image_candidates
                 nonlocal image_search_query
                 nonlocal image_search_query_normalized
-                nonlocal contact_text_inserted
+                nonlocal contact_request_inserted
                 nonlocal handoff_offer_inserted
                 filtered = identity_filter.feed(chunk, final=final)
                 filtered = _clean_decorative_symbols(
@@ -1339,25 +1360,36 @@ def create_router_app(
                             retrieval_images=len(images),
                             image_source="generated_answer",
                         )
-                if final and contact_text_required and not contact_text_inserted:
-                    contact_text_inserted = True
-                    filtered += contact_text_event(current_query, locale_hint)
+                if final and contact_request_required and not contact_request_inserted:
+                    contact_request_inserted = True
+                    filtered += contact_request_event()
                     log_info(
                         f"用户主动询问联系方式：request_id={request_id}，session_id={session_id}",
                         request_id=request_id,
                         session_id=session_id,
-                        conversion_event="contact_text",
+                        conversion_event="contact_request",
                     )
                 elif final and handoff_offer_required and not handoff_offer_inserted:
                     handoff_offer_inserted = True
-                    filtered += handoff_offer_event(current_query, locale_hint)
-                    log_info(
-                        "回答完成后询问是否转人工："
-                        f"request_id={request_id}，session_id={session_id}",
-                        request_id=request_id,
-                        session_id=session_id,
-                        conversion_event="handoff_offer",
-                    )
+                    try:
+                        if handoff_offer_task is None:
+                            raise ValueError("人工服务文案任务未创建")
+                        handoff_copy = await handoff_offer_task
+                        filtered += handoff_offer_event(handoff_copy)
+                        log_info(
+                            "27B已生成本地化转人工事件："
+                            f"request_id={request_id}，session_id={session_id}",
+                            request_id=request_id,
+                            session_id=session_id,
+                            conversion_event="handoff_offer",
+                        )
+                    except (httpx.HTTPError, ValueError, KeyError, asyncio.CancelledError):
+                        log_error(
+                            "27B生成本地化转人工文案失败，本轮不输出硬编码文案",
+                            request_id=request_id,
+                            session_id=session_id,
+                            exc_info=True,
+                        )
                 if is_workload and len(response_capture) < 2 * 1024 * 1024:
                     remaining = 2 * 1024 * 1024 - len(response_capture)
                     response_capture.extend(filtered[:remaining])
@@ -1551,7 +1583,6 @@ def create_router_app(
                         assistant_text = (
                             _response_text(bytes(response_capture))
                             .replace("[[IMAGE_GROUP_1]]", "")
-                            .replace("[[GTA_CONTACT]]", "")
                         )
                         if user_text and assistant_text:
                             memory_claim_trusted = (

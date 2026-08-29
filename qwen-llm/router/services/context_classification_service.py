@@ -4,24 +4,16 @@ from __future__ import annotations
 
 import re
 
-TOPICS = frozenset({"trip", "quote", "company", "support", "identity", "smalltalk", "general"})
+from ..knowledge_policy import load_knowledge_policy
+
+KNOWLEDGE_POLICY = load_knowledge_policy()
+TOPICS = frozenset(KNOWLEDGE_POLICY.conversation_topics)
 
 _DISPLAY_NAME_PATTERNS = (
     re.compile(r"^(?:我叫|我是|叫我|请叫我|称呼我)[\s：:]*(?P<name>[^,\s，。！？!?]{1,24})$", re.I),
     re.compile(r"^(?:my name is|call me)\s+(?P<name>[A-Za-z][A-Za-z .'-]{0,30})$", re.I),
 )
-_INVALID_DISPLAY_NAMES = {
-    "谁",
-    "什么",
-    "哪个",
-    "一个人",
-    "旅客",
-    "游客",
-    "中国人",
-    "外国人",
-    "来旅游的",
-    "疯了吗",
-}
+_INVALID_DISPLAY_NAMES = frozenset(KNOWLEDGE_POLICY.invalid_display_names)
 
 _PATTERNS = (
     (

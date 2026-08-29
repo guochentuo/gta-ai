@@ -9,6 +9,8 @@ from typing import Any
 
 import httpx
 
+from ..prompt_config import PROMPTS
+
 
 @dataclass(frozen=True)
 class QuoteCandidate:
@@ -161,17 +163,9 @@ def pricing_context(intent: QuoteIntent, quote: ExactQuote | None) -> str:
     if intent.person_count is None:
         missing.append("出行总人数")
     if missing:
-        return (
-            "【实时核价要求】\n用户正在询价，但尚缺少"
-            + "、".join(missing)
-            + "。请结合已召回的绿色旅行网线路简要推荐，并只追问缺失信息；"
-            "ES参考起价不是实时报价，不得据此编造总价。"
-        )
+        return PROMPTS.pricing_missing.format(missing="、".join(missing))
     if quote is None:
-        return (
-            "【实时核价结果】\n本次未取得有效实时报价。可推荐已召回的绿色旅行网线路，"
-            "但必须明确价格需要旅行顾问复核，不得自行计算或编造。"
-        )
+        return PROMPTS.pricing_unavailable
     fields = [
         "【绿色旅行网实时核价结果】",
         f"匹配线路: {quote.candidate.title}",
@@ -189,13 +183,14 @@ def pricing_context(intent: QuoteIntent, quote: ExactQuote | None) -> str:
         f"可售: {'是' if quote.saleable else '否'}",
         f"核价提示: {quote.message or '无'}",
         f"产品页面: {quote.candidate.display_url}",
-        "以上来自实时价格服务。请优先推荐这条匹配线路；不得把成人单价直接说成团队总价。"
-        "如用户未说明成人、儿童构成，应展示各类单价并追问人员构成后再给最终总价。",
+        PROMPTS.pricing_quote_footer,
     ]
     if quote.quoted_people > quote.requested_people:
         fields.append(
-            f"该产品最低按{quote.quoted_people}人核价；用户只有{quote.requested_people}人，"
-            "应说明可拼团、补足最低人数或改荐更适合人数的线路，不得伪称更低总价。"
+            PROMPTS.pricing_minimum_group.format(
+                quoted_people=quote.quoted_people,
+                requested_people=quote.requested_people,
+            )
         )
     return "\n".join(fields)
 

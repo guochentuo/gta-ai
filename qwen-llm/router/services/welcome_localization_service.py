@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 import redis
 
+from ..prompt_config import PROMPTS
 from .welcome_template_service import WelcomeTemplate
 
 _LOCALE_PATTERN = re.compile(r"^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8}){0,2}$")
@@ -125,15 +126,6 @@ class WelcomeLocalizationService:
             "suggested_questions": list(template.suggested_questions),
             "ui_text": template.ui_text,
         }
-        system_prompt = (
-            "You are a tourism marketing localization editor. Localize the supplied Chinese "
-            "content for the requested locale and country. Write naturally for local travelers; "
-            "do not translate literally. Preserve facts, prices, company names, Markdown "
-            "structure, every [[UPPER_CASE_MARKER]], and every URL exactly. Do not add "
-            "claims. Return one valid JSON object only, with exactly these keys: title, "
-            "content, suggested_questions, ui_text. "
-            "Keep every ui_text key unchanged and localize only its value."
-        )
         user_prompt = json.dumps(
             {
                 "target_locale": locale,
@@ -150,7 +142,7 @@ class WelcomeLocalizationService:
                 json={
                     "model": self.config.model,
                     "messages": [
-                        {"role": "system", "content": system_prompt},
+                        {"role": "system", "content": PROMPTS.welcome_localization},
                         {"role": "user", "content": user_prompt},
                     ],
                     "stream": False,
@@ -303,28 +295,9 @@ def _normalize_brand_names(value: str) -> str:
 
 
 def welcome_handoff_payload(ui_text: dict[str, str]) -> dict[str, Any]:
-    """使用已本地化的ES界面文字构造人工服务事件, 账号不交给模型生成。"""
+    """使用27B已本地化的ES界面文字构造人工服务事件。"""
     return {
         "type": "handoff_offer",
-        "title": ui_text.get("handoff_title", ""),
-        "description": ui_text.get("handoff_description", ""),
-        "contacts": [
-            {
-                "channel": "WhatsApp",
-                "account": "+852 5555 8888",
-                "url": "https://wa.me/85255558888",
-            },
-            {
-                "channel": "LINE",
-                "account": "@greentourasia",
-                "url": "https://line.me/R/ti/p/@greentourasia",
-            },
-            {
-                "channel": "WeChat",
-                "account": "GreenTourAsia",
-                "url": "",
-            },
-        ],
         "prompt": ui_text.get("handoff_prompt", ""),
         "action_label": ui_text.get("handoff_action_label", ""),
     }

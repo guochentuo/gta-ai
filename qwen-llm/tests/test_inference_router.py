@@ -8,7 +8,6 @@ from pathlib import Path
 import httpx
 import pytest
 from router.app import (
-    EXPLICIT_CONTACT_PROMPT,
     LANGUAGE_MATCH_PROMPT,
     RETRIEVAL_PROMPT,
     SYSTEM_PROMPT,
@@ -22,11 +21,12 @@ from router.app import (
     _IdentityPrefixFilter,
     _ImageMarkerStreamFilter,
     _response_text,
-    contact_text_event,
+    contact_request_event,
     contextual_retrieval_query,
     conversation_may_need_retrieval,
     create_router_app,
     direct_retrieval_query,
+    generate_handoff_offer,
     handoff_offer_event,
     inject_knowledge_tool,
     inject_persona,
@@ -183,48 +183,55 @@ def test_explicit_contact_query_is_detected() -> None:
     assert query_explicitly_requests_contact("杭州三日游") is False
 
 
-def test_contact_text_event_contains_structured_channels() -> None:
-    payload = json.loads(contact_text_event().decode().removeprefix("data: "))
+def test_contact_request_event_contains_no_copy_or_accounts() -> None:
+    payload = json.loads(contact_request_event().decode().removeprefix("data: "))
 
-    assert payload["type"] == "contact_text"
-    assert [item["channel"] for item in payload["contacts"]] == [
-        "WhatsApp",
-        "LINE",
-        "WeChat",
-    ]
-    assert payload["contacts"][0]["url"].startswith("https://wa.me/")
-    assert "不得推荐携程、飞猪、马蜂窝" in EXPLICIT_CONTACT_PROMPT
+    assert payload == {"type": "contact_request"}
 
 
-def test_handoff_offer_carries_hidden_contact_options() -> None:
-    payload = json.loads(handoff_offer_event().decode().removeprefix("data: "))
+def test_handoff_offer_wraps_27b_copy_without_contact_options() -> None:
+    payload = json.loads(
+        handoff_offer_event(
+            {"prompt": "需要旅行顾问继续帮你安排吗", "action_label": "联系旅行顾问"}
+        ).decode().removeprefix("data: ")
+    )
 
     assert payload["type"] == "handoff_offer"
     assert payload["prompt"].startswith("需要旅行顾问继续帮你安排吗")
-    assert len(payload["contacts"]) == 3
-    english = json.loads(
-        handoff_offer_event("Can you plan a trip to Hangzhou?").decode().removeprefix("data: ")
-    )
-    traditional = json.loads(
-        handoff_offer_event("請幫我規劃杭州三日遊").decode().removeprefix("data: ")
-    )
-    assert english["action_label"] == "Contact a travel consultant"
-    assert traditional["action_label"] == "聯絡旅遊顧問"
-    hong_kong = json.loads(handoff_offer_event("杭州行程", "zh-HK").decode().removeprefix("data: "))
-    assert hong_kong["action_label"] == "聯絡旅遊顧問"
-    simplified_user = json.loads(
-        handoff_offer_event(
-            "请介绍一下绿色旅行网,你们公司成立多久了,主要提供什么服务?",
-            "zh-HK",
+    assert "contacts" not in payload
+
+
+@pytest.mark.asyncio
+async def test_27b_generates_handoff_offer_in_current_language() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["chat_template_kwargs"]["enable_thinking"] is False
+        assert "de-DE" in body["messages"][1]["content"]
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"prompt":"Möchten Sie weitere Hilfe?",'
+                            '"action_label":"Reiseberater kontaktieren"}'
+                        }
+                    }
+                ]
+            },
         )
-        .decode()
-        .removeprefix("data: ")
+
+    result = await generate_handoff_offer(
+        "Wie plane ich meine Reise?",
+        locale_hint="de-DE",
+        country_hint="DE",
+        url="http://model/v1/chat/completions",
+        model="27b",
+        timeout_seconds=5,
+        transport=httpx.MockTransport(handler),
     )
-    assert simplified_user["action_label"] == "联系旅行顾问"
-    current_english = json.loads(
-        handoff_offer_event("hangzhou tour", "zh-CN").decode().removeprefix("data: ")
-    )
-    assert current_english["action_label"] == "Contact a travel consultant"
+
+    assert result["action_label"] == "Reiseberater kontaktieren"
 
 
 def test_persona_forbids_repeated_identity_introduction() -> None:
@@ -482,50 +489,36 @@ def test_clear_travel_intent_uses_direct_retrieval(text: str) -> None:
     assert direct_retrieval_query(body) == text
 
 
-def test_german_locale_keeps_model_and_handoff_copy_in_german() -> None:
+def test_german_locale_keeps_model_output_rule_in_german() -> None:
     prompt = language_style_prompt(
         "Wie viel kostet eine dreitägige Reise nach Hangzhou?",
         "de-DE",
         "DE",
     )
-    event = json.loads(
-        handoff_offer_event(
-            "Wie viel kostet eine dreitägige Reise nach Hangzhou?",
-            "de-DE",
-        )
-        .decode()
-        .removeprefix("data: ")
-    )
-
     assert "Deutsch" in prompt
-    assert event["action_label"] == "Reiseberater kontaktieren"
-    assert "Reiseberater" in event["prompt"]
 
 
 @pytest.mark.parametrize(
-    ("text", "locale", "language_name", "label_fragment"),
+    ("text", "locale", "language_name"),
     [
-        ("Combien coûte un voyage à Hangzhou ?", "fr-FR", "French", "conseiller"),
-        ("¿Cuánto cuesta un viaje a Hangzhou?", "es-ES", "Spanish", "asesor"),
-        ("Quanto custa uma viagem a Hangzhou?", "pt-BR", "Portuguese", "consultor"),
-        ("Сколько стоит поездка в Ханчжоу?", "ru-RU", "Russian", "консультант"),
-        ("杭州への旅行はいくらですか?", "ja-JP", "日本語", "コンサルタント"),
-        ("항저우 여행 비용은 얼마인가요?", "ko-KR", "한국어", "상담원"),
-        ("การเดินทางไปหางโจวราคาเท่าไหร่", "th-TH", "Thai", "ที่ปรึกษา"),
-        ("Chi phí du lịch Hàng Châu là bao nhiêu?", "vi-VN", "Vietnamese", "tư vấn"),
+        ("Combien coûte un voyage à Hangzhou ?", "fr-FR", "French"),
+        ("¿Cuánto cuesta un viaje a Hangzhou?", "es-ES", "Spanish"),
+        ("Quanto custa uma viagem a Hangzhou?", "pt-BR", "Portuguese"),
+        ("Сколько стоит поездка в Ханчжоу?", "ru-RU", "Russian"),
+        ("杭州への旅行はいくらですか?", "ja-JP", "日本語"),
+        ("항저우 여행 비용은 얼마인가요?", "ko-KR", "한국어"),
+        ("การเดินทางไปหางโจวราคาเท่าไหร่", "th-TH", "Thai"),
+        ("Chi phí du lịch Hàng Châu là bao nhiêu?", "vi-VN", "Vietnamese"),
     ],
 )
 def test_major_market_languages_localize_model_and_handoff(
     text: str,
     locale: str,
     language_name: str,
-    label_fragment: str,
 ) -> None:
     prompt = language_style_prompt(text, locale, locale.split("-")[-1])
-    event = json.loads(handoff_offer_event(text, locale).decode().removeprefix("data: "))
 
     assert language_name in prompt
-    assert label_fragment.casefold() in event["action_label"].casefold()
 
 
 @pytest.mark.parametrize("text", ["南京绿色帮我介绍一下", "绿色旅行网是什么", "介绍GreenTourAsia"])

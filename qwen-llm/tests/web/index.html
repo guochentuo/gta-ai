@@ -1769,40 +1769,22 @@
       }
 
       function renderAssistantContent(message) {
-        const marker = "[[GTA_CONTACT]]";
         const text = String(message.text || "");
-        const markerPosition = text.indexOf(marker);
-        if (markerPosition >= 0) {
-          const before = text.slice(0, markerPosition);
-          const after = text.slice(markerPosition + marker.length);
-          const knowledgeImages = message.knowledgeImages || [];
-          const imageMarkerBefore = /\[\[IMAGE_GROUP_1\]\]/.test(before);
-          return renderMarkdown(before, message.pending === true, imageMarkerBefore ? knowledgeImages : [], message.reviewSection === true)
-            + renderContactText(message.contactText)
-            + renderMarkdown(after, message.pending === true, imageMarkerBefore ? [] : knowledgeImages, message.reviewSection === true);
-        }
-        const content = renderMarkdown(text, message.pending === true, message.knowledgeImages || [], message.reviewSection === true);
-        return message.pending ? content : content + renderContactText(message.contactText);
-      }
-
-      function renderContactText(contactText) {
-        if (!contactText || !Array.isArray(contactText.contacts) || !contactText.contacts.length) return "";
-        const contacts = contactText.contacts.map(contact => {
-          const channel = escapeHtml(String(contact.channel || "联系顾问"));
-          const account = escapeHtml(String(contact.account || ""));
-          const url = String(contact.url || "");
-          const body = `<strong>${channel}：${account}</strong>`;
-          return url.startsWith("https://")
-            ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:#315c9b;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;">${body}</a>`
-            : `<span style="color:inherit;">${body}</span>`;
-        }).join(" ｜ ");
-        return `<p aria-label="联系旅行顾问" style="margin:12px 0;line-height:1.8;color:inherit;">${escapeHtml(String(contactText.title || "需要继续确认时，可以联系旅行顾问。"))} <span style="font-weight:600;">${contacts}</span>。${escapeHtml(String(contactText.description || ""))}</p>`;
+        return renderMarkdown(
+          text,
+          message.pending === true,
+          message.knowledgeImages || [],
+          message.reviewSection === true
+        );
       }
 
       function renderHandoffOffer(message, index) {
         if (!message.handoffOffer || message.handoffAccepted) return "";
-        const prompt = escapeHtml(String(message.handoffOffer.prompt || "需要旅行顾问继续帮你安排吗？"));
-        const actionLabel = escapeHtml(String(message.handoffOffer.action_label || "联系旅行顾问"));
+        const promptValue = String(message.handoffOffer.prompt || "").trim();
+        const actionValue = String(message.handoffOffer.action_label || "").trim();
+        if (!promptValue || !actionValue) return "";
+        const prompt = escapeHtml(promptValue);
+        const actionLabel = escapeHtml(actionValue);
         return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 2px;color:#5f6368;font-size:14px;"><span>${prompt}</span><button type="button" class="handoff-button" data-index="${index}" style="padding:6px 12px;border:1px solid #c7cbd1;border-radius:8px;background:#fff;color:#202124;cursor:pointer;font:inherit;">${actionLabel}</button></div>`;
       }
 
@@ -2112,8 +2094,14 @@
             const index = Number(button.dataset.index);
             const message = currentConversation().messages[index];
             if (!message?.handoffOffer) return;
-            message.contactText = message.handoffOffer;
             message.handoffAccepted = true;
+            window.dispatchEvent(new CustomEvent("gta:contact-request", {
+              detail: {
+                conversationId: currentConversation().id,
+                sessionId: currentConversation().sessionId || currentConversation().id,
+                source: "handoff_offer"
+              }
+            }));
             saveConversations();
             updateAssistant(index);
           });
@@ -2415,7 +2403,7 @@
               } else if (payload.type === "review_section") {
                 target.reviewSection = true;
                 void loadReviewSummary(target, assistantIndex).catch(() => { });
-              } else if (payload.type === "handoff_offer" && Array.isArray(payload.contacts)) {
+              } else if (payload.type === "handoff_offer" && payload.prompt && payload.action_label) {
                 target.handoffOffer = payload;
               } else if (payload.type === "suggested_questions") {
                 chat.suggestedQuestions = Array.isArray(payload.questions)
@@ -2552,12 +2540,17 @@
                 updateAssistant(assistantIndex);
                 continue;
               }
-              if (payload.type === "contact_text" && Array.isArray(payload.contacts)) {
-                target.contactText = payload;
-                updateAssistant(assistantIndex);
+              if (payload.type === "contact_request") {
+                window.dispatchEvent(new CustomEvent("gta:contact-request", {
+                  detail: {
+                    conversationId: chat.id,
+                    sessionId: chat.sessionId || chat.id,
+                    source: "explicit_contact"
+                  }
+                }));
                 continue;
               }
-              if (payload.type === "handoff_offer" && Array.isArray(payload.contacts)) {
+              if (payload.type === "handoff_offer" && payload.prompt && payload.action_label) {
                 target.handoffOffer = payload;
                 updateAssistant(assistantIndex);
                 continue;

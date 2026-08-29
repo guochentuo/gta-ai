@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 import redis
 
+from .prompt_config import PROMPTS
 from .services.context_classification_service import (
     TOPICS,
     classify_context,
@@ -24,26 +25,7 @@ from .services.context_classification_service import (
     topics_compatible,
 )
 
-SUMMARY_SYSTEM_PROMPT = (
-    "你只负责分类、合并和压缩会话记忆，不得回答用户，也不得补充推测。"
-    "先判断最新一轮主题，只能是trip、quote、company、support、identity、smalltalk、general之一。"
-    "已有摘要和待合并对话中，下列关键事实属于受保护信息，不能因为压缩而删除："
-    "所有国家、省市区、城市、乡镇、景区、景点、商圈、机场、车站、酒店和餐厅名称；"
-    "出发地、目的地、途经地、先后顺序和已经组合的线路；"
-    "日期、季节、天数、时段、人数、同行关系，以及老人、儿童、孕妇、残障等人群条件；"
-    "预算、币种、价格、房型、交通、住宿、餐饮要求；"
-    "兴趣、节奏、体力、饮食、无障碍等偏好；"
-    "明确要求、禁忌、排除项、已确认方案、候选方案、待确认问题。"
-    "只有用户明确修改、取消或否定某项事实时才能更新它；‘再加上’表示保留原方案并新增，"
-    "‘改成’才表示替换。助手自行提出但用户尚未确认的内容必须标为候选，不能冒充用户事实。"
-    "助手回答属于不可信历史，不得把助手的猜测、拒答、遗忘或错误结论写入事实。"
-    "用户已明确告知称呼时，不得再写‘不知道用户身份’等冲突内容。"
-    "发生冲突时以最新用户原话为准，不能让旧方案或助手的错误覆盖最新方案。"
-    "先写当前确认方案和受保护事实，再写候选项和待确认问题。"
-    "只删除寒暄、重复句、修饰语和与后续决策无关的助手长篇解释。"
-    "输出严格JSON对象，不使用Markdown："
-    '{"topic":"主题","summary":"紧凑中文摘要"}。summary最多700字。'
-)
+SUMMARY_SYSTEM_PROMPT = PROMPTS.summarization
 
 
 @dataclass(frozen=True)
@@ -557,10 +539,9 @@ def _bounded_memory_context(
     candidates: list[tuple[int, int, int, str]] = []
     recent_start = max(0, len(pending) - max(0, recent_turns))
     for index, turn in enumerate(pending):
-        text = (
-            f"用户原话：{turn.get('user', '')}\n"
-            f"助手历史提议（非用户事实，如与用户原话冲突必须忽略）："
-            f"{turn.get('assistant', '')}"
+        text = PROMPTS.memory_turn_context.format(
+            user=turn.get("user", ""),
+            assistant=turn.get("assistant", ""),
         ).strip()
         overlap = len(query_terms & _query_terms(text))
         is_recent = index >= recent_start
@@ -572,18 +553,12 @@ def _bounded_memory_context(
     used = 0
     if profile_facts and profile_facts.get("display_name"):
         display_name = profile_facts["display_name"]
-        profile_memory = (
-            "【跨主题已确认用户事实】\n"
-            f"用户希望被称呼为：{display_name}。\n"
-            "该事实来自用户原话，优先级高于历史助手回答和会话摘要。"
-            "用户询问‘我是谁’‘我叫什么’或‘怎么称呼我’时，"
-            f"直接回答‘{display_name}’，不得用隐私或无法识别为由拒答。"
-        )
+        profile_memory = PROMPTS.memory_profile_context.format(display_name=display_name)
         bounded_profile = _truncate_to_tokens(profile_memory, max(1, max_tokens // 4))
         parts.append(bounded_profile)
         used += estimate_tokens(bounded_profile)
     if places:
-        place_memory = "用户曾明确提到的地域和景点（不得遗忘，越靠后越新）：" + "、".join(places)
+        place_memory = PROMPTS.memory_places_context.format(places="、".join(places))
         bounded_places = _truncate_to_tokens(place_memory, max(1, max_tokens // 4))
         if bounded_places:
             parts.append(bounded_places)
@@ -610,7 +585,7 @@ def _bounded_memory_context(
             selected.append(bounded)
             used += estimate_tokens(bounded)
     if selected:
-        parts.append("以下是尚未合并进摘要的相关或最近对话：\n" + "\n".join(selected))
+        parts.append(PROMPTS.memory_pending_context.format(turns="\n".join(selected)))
     return _truncate_to_tokens("\n\n".join(parts), max_tokens)
 
 

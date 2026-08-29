@@ -8,7 +8,11 @@ from typing import Any
 
 import httpx
 
+from .knowledge_policy import load_knowledge_policy
 from .services.pricing_service import QuoteCandidate
+
+KNOWLEDGE_POLICY = load_knowledge_policy()
+KNOWLEDGE_LABELS = KNOWLEDGE_POLICY.labels
 
 
 @dataclass(frozen=True)
@@ -225,10 +229,12 @@ class ElasticsearchRetriever:
             context_sections.append(site_context)
         if product_documents and not site_context:
             context_sections.append(
-                "【绿色旅行网可推荐行程产品】\n" + "\n\n".join(product_documents)
+                KNOWLEDGE_LABELS["recommended_products"] + "\n" + "\n\n".join(product_documents)
             )
         if documents and not site_context:
-            context_sections.append("【补充知识资料】\n" + "\n\n".join(documents))
+            context_sections.append(
+                KNOWLEDGE_LABELS["supplementary"] + "\n" + "\n\n".join(documents)
+            )
         context = "\n\n".join(context_sections)[: self._config.max_context_chars]
         images: list[tuple[str, str]] = []
         destination_matched = any(
@@ -261,7 +267,7 @@ class ElasticsearchRetriever:
                     or _text(source.get("city_name"))
                     or _text(source.get("province_name"))
                     or _text(source.get("title"))
-                    or "知识库图片"
+                    or KNOWLEDGE_LABELS["image_fallback"]
                 )
                 images.append((image_title, path))
                 if len(images) == 3:
@@ -1069,7 +1075,7 @@ def _format_trip_product(hit: dict[str, Any], max_chars: int) -> str:
                 value
                 for value in (
                     people,
-                    f"默认核价人数不得低于{min_pax}人"
+                    KNOWLEDGE_LABELS["minimum_quote_people"].format(min_pax=min_pax)
                     if isinstance(min_pax, int) and min_pax > 0
                     else "",
                 )
@@ -1085,9 +1091,12 @@ def _format_trip_product(hit: dict[str, Any], max_chars: int) -> str:
         price = sale_summary.get("reference_start_price")
         currency = _text(sale_summary.get("currency"))
         if isinstance(price, int | float) and not isinstance(price, bool):
-            price_line = f"参考起价: {price:g} {currency}".rstrip() + " (不是实时报价)"
+            price_line = (
+                f"参考起价: {price:g} {currency}".rstrip()
+                + KNOWLEDGE_LABELS["reference_price_suffix"]
+            )
         if sale_summary.get("requires_realtime_quote") is True:
-            quote_line = "准确价格需要根据日期、人数和套餐实时询价"
+            quote_line = KNOWLEDGE_LABELS["realtime_quote_required"]
 
     fields = [
         f"产品名称: {title}",
@@ -1132,47 +1141,14 @@ def _quote_candidate(hit: dict[str, Any]) -> QuoteCandidate | None:
     return None
 
 
-_ABOUT_TERMS = (
-    "关于我们",
-    "公司介绍",
-    "你们公司",
-    "哪家公司",
-    "所属公司",
-    "谁开发",
-    "谁研发",
-    "谁运营",
-    "谁创建",
-    "开发者",
-    "运营方",
-    "绿色旅行网是谁",
-    "旅行社资质",
-    "company",
-    "about us",
-    "who are you",
-    "greentourasia",
-)
+_ABOUT_TERMS = KNOWLEDGE_POLICY.site_about_terms
 _ABOUT_RECOMMENDATION_PATTERN = re.compile(
     r"(?:旅游公司|旅行公司|旅行社|旅游平台).{0,16}(?:推荐|最好|靠谱|选择|哪家|比较)|"
     r"(?:推荐|最好|靠谱|选择|哪家|比较).{0,16}(?:旅游公司|旅行公司|旅行社|旅游平台)|"
     r"(?:旅游|旅行).{0,20}(?:推荐|最好|靠谱|选择|哪家|比较).{0,12}(?:公司|旅行社|平台)",
     re.I,
 )
-_HELP_TERMS = (
-    "帮助中心",
-    "怎么预订",
-    "如何预订",
-    "付款",
-    "支付",
-    "退款",
-    "取消订单",
-    "投诉",
-    "预订政策",
-    "help",
-    "booking",
-    "payment",
-    "refund",
-    "cancel",
-)
+_HELP_TERMS = KNOWLEDGE_POLICY.site_help_terms
 
 
 def _site_modules_for_query(query: str) -> tuple[str, ...]:
@@ -1208,7 +1184,7 @@ def _format_about_page(source: dict[str, Any]) -> str:
             break
     if not lines:
         return ""
-    return "【绿色旅行网公司资料】\n" + "\n\n".join(lines)[:2000]
+    return KNOWLEDGE_LABELS["company"] + "\n" + "\n\n".join(lines)[:2000]
 
 
 def _format_help_page(source: dict[str, Any], query: str) -> str:
@@ -1233,7 +1209,7 @@ def _format_help_page(source: dict[str, Any], query: str) -> str:
         f"问题: {_text(item.get('question'))}\n答案: {_text(item.get('answer'))}"
         for item in selected
     ]
-    return "【绿色旅行网帮助中心】\n" + "\n\n".join(lines)[:1800] if lines else ""
+    return KNOWLEDGE_LABELS["help"] + "\n" + "\n\n".join(lines)[:1800] if lines else ""
 
 
 def _product_intent_score(query: str, hit: dict[str, Any]) -> float:

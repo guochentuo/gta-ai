@@ -5,17 +5,16 @@ from __future__ import annotations
 
 import json
 import re
-import tomllib
-from pathlib import Path
 
 import httpx
 
 from ..knowledge_policy import load_knowledge_policy
+from ..prompt_config import PROMPTS
 from ..retrieval import RetrievalResult
 from .localization_service import (
-    EXPLICIT_CONTACT_PROMPT,
     LANGUAGE_MATCH_PROMPT,
-    contact_text_event,
+    contact_request_event,
+    generate_handoff_offer,
     handoff_offer_event,
     language_style_prompt,
     query_explicitly_requests_contact,
@@ -30,65 +29,20 @@ HISTORICAL_IDENTITY_INTRO_PATTERN = re.compile(
     r"[^。！？!?.\n]{0,180}[。！？!?.]\s*",
     re.IGNORECASE,
 )
-IDENTITY_QUESTION_TERMS = (
-    "你是谁",
-    "你叫什么",
-    "你的名字",
-    "介绍一下你自己",
-    "自我介绍",
-    "哪个公司",
-    "哪家公司",
-    "所属公司",
-    "属于什么公司",
-    "谁开发",
-    "谁研发",
-    "谁运营",
-    "谁创建",
-    "开发者是谁",
-    "研发方",
-    "运营方",
-    "千问",
-    "通义",
-    "Qwen",
-    "qwen",
-    "底层模型",
-    "什么模型",
-    "哪种模型",
-    "什么身份",
-)
+IDENTITY_QUESTION_TERMS = KNOWLEDGE_POLICY.identity_question_terms
 DECORATIVE_SYMBOL_PATTERN = re.compile("[\U0001f1e6-\U0001faff\u2600-\u27bf\ufe0e\ufe0f\u200d]")
 EMOTICON_PATTERN = re.compile(r"(?:\^[_.,-]?\^|[TQ][_.-]?[TQ]|[:;=8xX][-^']?[)(DPp/\\])")
 METRIC_PATTERN = re.compile(
     r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{[^}]*\})?\s+(?P<value>[-+0-9.eE]+)$"
 )
-PROMPTS_PATH = Path(__file__).resolve().parents[2] / "config" / "prompts.toml"
-
-
-def _load_prompts(path: Path = PROMPTS_PATH) -> tuple[str, str, str, str, str, str, str, str]:
-    with path.open("rb") as prompt_file:
-        prompts = tomllib.load(prompt_file)
-    return (
-        str(prompts["persona"]["system"]).strip(),
-        str(prompts["retrieval"]["context"]).strip(),
-        str(prompts["company_recommendation"]["context"]).strip(),
-        str(prompts["verified_business_fact"]["context"]).strip(),
-        str(prompts["confirmation_followup"]["context"]).strip(),
-        str(prompts["travel_support"]["context"]).strip(),
-        str(prompts["playful_query"]["context"]).strip(),
-        str(prompts["question_history"]["context"]).strip(),
-    )
-
-
-(
-    SYSTEM_PROMPT,
-    RETRIEVAL_PROMPT,
-    COMPANY_RECOMMENDATION_PROMPT,
-    VERIFIED_BUSINESS_FACT_PROMPT,
-    CONFIRMATION_FOLLOWUP_PROMPT,
-    TRAVEL_SUPPORT_PROMPT,
-    PLAYFUL_QUERY_PROMPT,
-    QUESTION_HISTORY_PROMPT,
-) = _load_prompts()
+SYSTEM_PROMPT = PROMPTS.persona
+RETRIEVAL_PROMPT = PROMPTS.retrieval
+COMPANY_RECOMMENDATION_PROMPT = PROMPTS.company_recommendation
+VERIFIED_BUSINESS_FACT_PROMPT = PROMPTS.verified_business_fact
+CONFIRMATION_FOLLOWUP_PROMPT = PROMPTS.confirmation_followup
+TRAVEL_SUPPORT_PROMPT = PROMPTS.travel_support
+PLAYFUL_QUERY_PROMPT = PROMPTS.playful_query
+QUESTION_HISTORY_PROMPT = PROMPTS.question_history
 
 KNOWLEDGE_SEARCH_TOOL = {
     "type": "function",
@@ -147,12 +101,7 @@ async def normalize_retrieval_query(
                     "messages": [
                         {
                             "role": "system",
-                            "content": (
-                                "把用户旅游问题转换成简洁中文检索词，只输出检索词。"
-                                "只翻译和提取用户原文明确出现的信息，严禁猜测、补充或沿用"
-                                "其他会话的信息。原文出现地点、天数、人数、服务、预算和核心"
-                                "需求时必须保留；没有出现的字段绝对不要生成。不要回答问题。"
-                            ),
+                            "content": PROMPTS.retrieval_query_normalization,
                         },
                         {"role": "user", "content": query[:1000]},
                     ],
@@ -311,21 +260,14 @@ def retrieval_context(
     if include_images and len(result.images) >= 3:
         if use_image_marker:
             image_titles = "、".join(title for title, _ in result.images[:3])
-            context += (
-                "\n\n可用图片组编号：1（共三张）\n"
-                "图片主题：" + image_titles + "\n"
-                "当前地域旅游问题已有严格匹配的图片，必须在正文最相关的位置输出一次"
-                "[[IMAGE_GROUP_1]]。整篇最多这一组三张，组图前后都要有相关正文；"
-                "不要把标记放在开头、结尾，不要拆散图片或单独说明图片。"
-            )
+            context += "\n\n" + PROMPTS.image_marker_context.format(titles=image_titles)
         else:
             image_lines = [
                 f"![{title}](https://hk-cdn.greentourasia.com/{path.lstrip('/')})"
                 for title, path in result.images
             ]
-            context += (
-                "\n\n可用三图组（不可拆分；决定使用图片时，必须将以下"
-                "Markdown块完整原样复制到正文的合适位置）：\n" + "\n".join(image_lines)
+            context += "\n\n" + PROMPTS.image_markdown_context.format(
+                images="\n".join(image_lines)
             )
     return context
 
@@ -450,16 +392,7 @@ def inject_persona(
     payload["model"] = internal_model
     owned_prompt_parts = [SYSTEM_PROMPT] if persona_prompt_enabled else []
     if memory_summary:
-        owned_prompt_parts.append(
-            "以下是同一会话的权威压缩记忆，代表用户已经确认或正在讨论的当前上下文。"
-            "当前这一轮用户原话的优先级最高；如果当前问题与记忆、历史助手回答或知识库冲突，"
-            "必须以当前问题为准。"
-            "记忆中标记为‘跨主题已确认用户事实’的内容是Router从用户原话提取的权威事实，"
-            "必须直接使用，不得以隐私、无法识别或不知道为由否定。"
-            "回答‘继续、再加上、调整、那老人呢’等追问时必须继承最新方案；"
-            "‘再加上’表示保留当前方案中的全部目的地并新增，不得退回旧方案或擅自替换。"
-            "最近用户意图和压缩摘要优先于历史助手回答中的错误：\n" + memory_summary
-        )
+        owned_prompt_parts.append(PROMPTS.memory_authoritative_context + memory_summary)
     if additional_system_prompt:
         owned_prompt_parts.append(additional_system_prompt)
     if retrieval_context:
