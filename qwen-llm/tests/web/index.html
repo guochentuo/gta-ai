@@ -1460,11 +1460,9 @@
       const MAX_CONVERSATIONS = 20;
       const MAX_IMAGES = 4;
       const MEDIA_CDN_PREFIX = "https://hk-cdn.greentourasia.com/";
-      const PROXIED_BY_NGINX = window.location.hostname === "192.168.80.2";
-      const ROUTER_HOST = window.location.hostname;
-      const ROUTER_URL = PROXIED_BY_NGINX
-        ? `${window.location.origin}/router`
-        : `http://${ROUTER_HOST}:7100`;
+      // 无论经Nginx还是直接访问8080，都走同源/router。
+      // 直连时由测试Web转发至本机7100，避免浏览器跨端口请求失败。
+      const ROUTER_URL = `${window.location.origin}/router`;
       const CHAT_URL = `${ROUTER_URL}/v1/chat/completions`;
       const landingKeyword = new URLSearchParams(window.location.search).get("keyword") || "";
 
@@ -1824,7 +1822,7 @@
         const completeImages = [...html.matchAll(knowledgeImagePattern)].slice(0, 3);
         const earlyImages = retrievalImages.slice(0, 3).map(image => ({
           alt: escapeHtml(String(image.title || "知识库图片")),
-          src: escapeHtml(String(image.url || ""))
+          src: escapeHtml(String(image.path || ""))
         })).filter(image => image.src);
         // 图片候选只负责提供数据；没有模型标记时绝不自动插图。
         // 这能避免价格、公司和普通问答因为ES凑够三张封面而出现无关图片。

@@ -20,8 +20,9 @@ async def test_index_serves_static_chat_interface() -> None:
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     assert "GreenTourAI" in response.text
-    assert "http://${ROUTER_HOST}:7100" in response.text
+    assert 'const ROUTER_URL = `${window.location.origin}/router`' in response.text
     assert 'MEDIA_CDN_PREFIX = "https://hk-cdn.greentourasia.com/"' in response.text
+    assert 'src: escapeHtml(String(image.path || ""))' in response.text
     assert "withKnowledgeImages" in response.text
     assert 'style="display:block;width:100%;max-width:720px;' in response.text
     assert "grid-template-columns:repeat(3,minmax(0,1fr))" in response.text

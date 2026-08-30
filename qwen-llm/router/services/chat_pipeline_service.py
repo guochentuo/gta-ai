@@ -263,7 +263,7 @@ def retrieval_context(
             context += "\n\n" + PROMPTS.image_marker_context.format(titles=image_titles)
         else:
             image_lines = [
-                f"![{title}](https://hk-cdn.greentourasia.com/{path.lstrip('/')})"
+                f"![{title}]({path.lstrip('/')})"
                 for title, path in result.images
             ]
             context += "\n\n" + PROMPTS.image_markdown_context.format(
@@ -276,7 +276,7 @@ def retrieval_image_event(result: RetrievalResult) -> bytes:
     if len(result.images) < 3:
         return b""
     images = [
-        {"title": title, "url": f"https://hk-cdn.greentourasia.com/{path.lstrip('/')}"}
+        {"title": title, "path": path.lstrip("/")}
         for title, path in result.images[:3]
     ]
     payload = json.dumps(

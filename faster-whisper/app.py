@@ -44,6 +44,12 @@ VERIFY_MAX_END_DIFFERENCE_SEC = float(
 VERIFY_MIN_SPEECH_DURATION_AGREEMENT = float(
     os.getenv("ASR_VERIFY_MIN_SPEECH_DURATION_AGREEMENT", "0.90")
 )
+# 独立复核因分块边界漏掉大量中间语音时，允许选择覆盖显著更完整的一遍。
+# 该路径仍要求首尾完整、无重复段并保持基本文本一致性，不能用于放过两份
+# 覆盖接近但内容互相冲突的结果。
+VERIFY_COVERAGE_RESCUE_MIN_TEXT_AGREEMENT = 0.55
+VERIFY_COVERAGE_DOMINANCE_RATIO = 1.25
+ARBITRATION_CHUNK_LENGTH_SEC = 20
 CONDITION_ON_PREVIOUS_TEXT = os.getenv(
     "ASR_CONDITION_ON_PREVIOUS_TEXT", "false"
 ).strip().lower() in ("1", "true", "yes", "on")
@@ -358,6 +364,130 @@ def tail_word_mean_probability(result: dict[str, Any]) -> float:
     return sum(probabilities) / len(probabilities) if probabilities else 0.0
 
 
+def mean_segment_quality(result: dict[str, Any]) -> float:
+    """Score a complete decode without rewarding text length alone."""
+    segments = result["segments"]
+    if not segments:
+        return 0.0
+    log_probability = sum(
+        max(-1.0, min(0.0, float(segment.get("avgLogProbability", -1.0))))
+        for segment in segments
+    ) / len(segments)
+    no_speech_probability = sum(
+        max(0.0, min(1.0, float(segment.get("noSpeechProbability", 1.0))))
+        for segment in segments
+    ) / len(segments)
+    # avg_logprob通常位于[-1, 0]。该评分只比较完整候选，不把文本更长直接
+    # 当作更正确，避免背景音乐上的幻觉因字数较多而胜出。
+    return round((log_probability + 1.0) * 0.7 + (1.0 - no_speech_probability) * 0.3, 6)
+
+
+def build_arbitration(
+    primary: dict[str, Any],
+    second: dict[str, Any],
+    third: dict[str, Any],
+    gate: dict[str, Any],
+    verification: dict[str, Any],
+) -> dict[str, Any]:
+    candidates = {
+        "primary": primary,
+        "verification": second,
+        "arbitration": third,
+    }
+    vad_last_end = max(
+        (float(interval["end"]) for interval in gate.get("intervals", [])),
+        default=0.0,
+    )
+    metrics: dict[str, dict[str, Any]] = {}
+    for name, candidate in candidates.items():
+        last_end = max(
+            (float(segment["end"]) for segment in candidate["segments"]),
+            default=0.0,
+        )
+        tail_probability = tail_word_mean_probability(candidate)
+        repeated_ratio = repeated_segment_ratio(candidate["segments"])
+        metrics[name] = {
+            "lastEndSec": round(last_end, 3),
+            "vadTailGapSec": round(max(0.0, vad_last_end - last_end), 3),
+            "tailWordMeanProbability": round(tail_probability, 6),
+            "repeatedSegmentRatio": repeated_ratio,
+            "recognizedSpeechSec": recognized_speech_seconds(candidate["segments"]),
+            "segmentQuality": mean_segment_quality(candidate),
+            "eligible": (
+                candidate["status"] == "ready"
+                and max(0.0, vad_last_end - last_end) <= 8.0
+                and tail_probability >= 0.35
+                and repeated_ratio < 0.30
+            ),
+        }
+
+    names = list(candidates)
+    pair_agreements: dict[str, float] = {}
+    agreement_sums = {name: 0.0 for name in names}
+    best_pair: tuple[str, str] | None = None
+    best_pair_agreement = -1.0
+    for index, left in enumerate(names):
+        for right in names[index + 1 :]:
+            agreement = difflib.SequenceMatcher(
+                None,
+                normalized_text(candidates[left]["text"]),
+                normalized_text(candidates[right]["text"]),
+            ).ratio()
+            pair_agreements[f"{left}:{right}"] = round(agreement, 6)
+            agreement_sums[left] += agreement
+            agreement_sums[right] += agreement
+            if (
+                metrics[left]["eligible"]
+                and metrics[right]["eligible"]
+                and agreement > best_pair_agreement
+            ):
+                best_pair = (left, right)
+                best_pair_agreement = agreement
+
+    eligible = [name for name in names if metrics[name]["eligible"]]
+    selected = ""
+    selection_reason = "arbitration_failed"
+    requires_review = False
+    if best_pair is not None and best_pair_agreement >= VERIFY_COVERAGE_RESCUE_MIN_TEXT_AGREEMENT:
+        selected = max(
+            best_pair,
+            key=lambda name: (
+                agreement_sums[name],
+                metrics[name]["segmentQuality"],
+                metrics[name]["recognizedSpeechSec"],
+            ),
+        )
+        selection_reason = "three_decode_consensus"
+    elif eligible:
+        # 三路均受分块边界影响而无法形成文字多数时，只在候选首尾完整、无
+        # 重复且尾部可信的前提下按声学质量选取。发布字幕同时保留复核标记，
+        # 避免完整视频因非确定性的分块差异永久失败。
+        selected = max(
+            eligible,
+            key=lambda name: (
+                metrics[name]["segmentQuality"],
+                agreement_sums[name],
+                metrics[name]["recognizedSpeechSec"],
+            ),
+        )
+        selection_reason = "quality_scored_fallback"
+        requires_review = True
+
+    verification.update(
+        {
+            "status": "verified" if selected else "review_required",
+            "strategy": "three_decode_conditional_arbitration",
+            "selectedDecode": selected or "none",
+            "selectionReason": selection_reason,
+            "requiresReview": requires_review,
+            "arbitrationChunkLengthSec": ARBITRATION_CHUNK_LENGTH_SEC,
+            "arbitrationPairAgreements": pair_agreements,
+            "arbitrationMetrics": metrics,
+        }
+    )
+    return verification
+
+
 def build_verification(
     primary: dict[str, Any], second: dict[str, Any], gate: dict[str, Any]
 ) -> dict[str, Any]:
@@ -384,28 +514,69 @@ def build_verification(
         (float(interval["end"]) for interval in gate.get("intervals", [])),
         default=0.0,
     )
-    decoded_last_end = max(primary_last_end, second_last_end)
-    vad_tail_gap = max(0.0, vad_last_end - decoded_last_end)
+    primary_tail_gap = max(0.0, vad_last_end - primary_last_end)
+    second_tail_gap = max(0.0, vad_last_end - second_last_end)
     primary_tail_probability = tail_word_mean_probability(primary)
     second_tail_probability = tail_word_mean_probability(second)
-    tail_probability = min(primary_tail_probability, second_tail_probability)
     status_matches = primary["status"] == second["status"]
-    content_matches = (
-        primary["status"] == "no_speech"
-        or (
-            agreement >= VERIFY_MIN_TEXT_AGREEMENT
-            and abs(primary_last_end - second_last_end)
-            <= VERIFY_MAX_END_DIFFERENCE_SEC
-            and primary_repeated_ratio < 0.30
-            and second_repeated_ratio < 0.30
-            and speech_duration_agreement >= VERIFY_MIN_SPEECH_DURATION_AGREEMENT
-            and vad_tail_gap <= 8.0
-            and tail_probability >= 0.35
-        )
+    primary_complete = primary_tail_gap <= 8.0 and primary_tail_probability >= 0.35
+    second_complete = second_tail_gap <= 8.0 and second_tail_probability >= 0.35
+    common_quality_matches = (
+        agreement >= VERIFY_MIN_TEXT_AGREEMENT
+        and primary_repeated_ratio < 0.30
+        and second_repeated_ratio < 0.30
+        and speech_duration_agreement >= VERIFY_MIN_SPEECH_DURATION_AGREEMENT
+    )
+    primary_coverage_dominant = (
+        primary_complete
+        and primary_repeated_ratio < 0.30
+        and agreement >= VERIFY_COVERAGE_RESCUE_MIN_TEXT_AGREEMENT
+        and primary_speech_sec
+        >= max(1.0, second_speech_sec) * VERIFY_COVERAGE_DOMINANCE_RATIO
+    )
+    second_coverage_dominant = (
+        second_complete
+        and second_repeated_ratio < 0.30
+        and agreement >= VERIFY_COVERAGE_RESCUE_MIN_TEXT_AGREEMENT
+        and second_speech_sec
+        >= max(1.0, primary_speech_sec) * VERIFY_COVERAGE_DOMINANCE_RATIO
+    )
+    selected_decode = ""
+    selection_reason = "none"
+    if primary["status"] == "no_speech":
+        selected_decode = "primary"
+        selection_reason = "no_speech"
+    elif common_quality_matches:
+        if primary_complete and second_complete:
+            selected_decode = (
+                "primary" if primary_last_end >= second_last_end else "verification"
+            )
+        elif primary_complete:
+            selected_decode = "primary"
+        elif second_complete:
+            selected_decode = "verification"
+        if selected_decode:
+            selection_reason = "independent_agreement"
+    elif primary_coverage_dominant:
+        selected_decode = "primary"
+        selection_reason = "primary_coverage_dominant"
+    elif second_coverage_dominant:
+        selected_decode = "verification"
+        selection_reason = "verification_coverage_dominant"
+    content_matches = bool(selected_decode)
+    selected_tail_gap = (
+        primary_tail_gap if selected_decode != "verification" else second_tail_gap
+    )
+    selected_tail_probability = (
+        primary_tail_probability
+        if selected_decode != "verification"
+        else second_tail_probability
     )
     return {
         "status": "verified" if status_matches and content_matches else "review_required",
-        "strategy": "independent_changed_chunk_boundaries",
+        "strategy": "independent_changed_chunk_boundaries_select_complete_decode",
+        "selectedDecode": selected_decode or "none",
+        "selectionReason": selection_reason,
         "primaryChunkLengthSec": CHUNK_LENGTH_SEC,
         "verificationChunkLengthSec": VERIFY_CHUNK_LENGTH_SEC,
         "textAgreement": round(agreement, 6),
@@ -417,17 +588,28 @@ def build_verification(
         "primaryLastEndSec": round(primary_last_end, 3),
         "verificationLastEndSec": round(second_last_end, 3),
         "maximumEndDifferenceSec": VERIFY_MAX_END_DIFFERENCE_SEC,
+        "endDifferenceSec": round(abs(primary_last_end - second_last_end), 3),
+        "endDifferenceUsedAsHardGate": False,
         "primaryRepeatedSegmentRatio": primary_repeated_ratio,
         "verificationRepeatedSegmentRatio": second_repeated_ratio,
         "primaryRecognizedSpeechSec": primary_speech_sec,
         "verificationRecognizedSpeechSec": second_speech_sec,
         "speechDurationAgreement": round(speech_duration_agreement, 6),
         "minimumSpeechDurationAgreement": VERIFY_MIN_SPEECH_DURATION_AGREEMENT,
+        "coverageRescueMinimumTextAgreement": VERIFY_COVERAGE_RESCUE_MIN_TEXT_AGREEMENT,
+        "coverageDominanceRatio": VERIFY_COVERAGE_DOMINANCE_RATIO,
+        "primaryCoverageDominant": primary_coverage_dominant,
+        "verificationCoverageDominant": second_coverage_dominant,
         "vadLastSpeechEndSec": round(vad_last_end, 3),
-        "decodedLastEndSec": round(decoded_last_end, 3),
-        "vadTailGapSec": round(vad_tail_gap, 3),
+        "primaryVadTailGapSec": round(primary_tail_gap, 3),
+        "verificationVadTailGapSec": round(second_tail_gap, 3),
+        "primaryTailWordMeanProbability": round(primary_tail_probability, 6),
+        "verificationTailWordMeanProbability": round(second_tail_probability, 6),
+        "primaryComplete": primary_complete,
+        "verificationComplete": second_complete,
+        "vadTailGapSec": round(selected_tail_gap, 3),
         "maximumVadTailGapSec": 8.0,
-        "tailWordMeanProbability": round(tail_probability, 6),
+        "tailWordMeanProbability": round(selected_tail_probability, 6),
         "minimumTailWordMeanProbability": 0.35,
         "verificationTextSha256": hashlib.sha256(second_text.encode("utf-8")).hexdigest(),
     }
@@ -437,6 +619,7 @@ def transcribe(
     audio_path: str, language: str | None, priority: str = "P1"
 ) -> dict[str, Any]:
     started = time.perf_counter()
+    third: dict[str, Any] | None = None
     with _admission_client.lease(priority), _inference_gate.acquire(priority):
         gate = speech_gate(audio_path)
         primary = decode(audio_path, language, CHUNK_LENGTH_SEC)
@@ -445,24 +628,31 @@ def transcribe(
             if VERIFY_ENABLED
             else primary
         )
-    verification = build_verification(primary, second, gate)
+        verification = build_verification(primary, second, gate)
+        if VERIFY_ENABLED and verification["status"] != "verified":
+            third = decode(audio_path, language, ARBITRATION_CHUNK_LENGTH_SEC)
+            verification = build_arbitration(primary, second, third, gate, verification)
+    selected_candidates = {"primary": primary, "verification": second}
+    if third is not None:
+        selected_candidates["arbitration"] = third
+    selected = selected_candidates.get(verification["selectedDecode"], primary)
     return {
         "schemaVersion": 1,
-        "status": primary["status"]
+        "status": selected["status"]
         if verification["status"] == "verified"
         else "review_required",
         "model": MODEL_NAME,
-        "language": primary["language"],
-        "languageProbability": primary["languageProbability"],
-        "durationSec": primary["durationSec"],
-        "durationAfterVadSec": primary["durationAfterVadSec"],
+        "language": selected["language"],
+        "languageProbability": selected["languageProbability"],
+        "durationSec": selected["durationSec"],
+        "durationAfterVadSec": selected["durationAfterVadSec"],
         "decoding": {
             "chunkLengthSec": CHUNK_LENGTH_SEC,
             "conditionOnPreviousText": CONDITION_ON_PREVIOUS_TEXT,
         },
         "verification": verification,
-        "text": primary["text"],
-        "segments": primary["segments"],
+        "text": selected["text"],
+        "segments": selected["segments"],
         "elapsedMs": round((time.perf_counter() - started) * 1000, 3),
     }
 

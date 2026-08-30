@@ -1256,6 +1256,9 @@ def test_image_group_event_is_structured_and_limited_to_three_images() -> None:
     assert payload["type"] == "image_group"
     assert payload["group_id"] == 1
     assert len(payload["images"]) == 3
+    assert payload["images"][0] == {"title": "西湖", "path": "image/xihu.jpg"}
+    assert all("url" not in image for image in payload["images"])
+    assert "hk-cdn.greentourasia.com" not in event
 
 
 def test_less_than_three_images_skip_entire_image_group() -> None:

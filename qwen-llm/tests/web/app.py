@@ -6,10 +6,28 @@ from typing import Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from tests.web.reviews import WebReviewService
+
+
+ROUTER_BASE_URL = "http://192.168.80.7:7100"
+
+
+def _router_headers(request: Request) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for name, value in request.headers.items():
+        if name.lower() in {
+            "content-type",
+            "x-gta-request-id",
+            "x-gta-session-id",
+            "x-gta-priority",
+            "x-gta-locale",
+            "x-gta-country",
+        }:
+            headers[name] = value
+    return headers
 
 
 class ChatDebugLog(BaseModel):
@@ -44,6 +62,54 @@ def create_web_router() -> APIRouter:
             flush=True,
         )
         return Response(status_code=204)
+
+    @router.post("/router/v1/chat/completions", include_in_schema=False)
+    async def proxy_chat(request: Request) -> StreamingResponse:
+        """让8080测试页通过同源地址流式访问本机7100 Router。"""
+        client = httpx.AsyncClient(timeout=None)
+        upstream_request = client.build_request(
+            "POST",
+            f"{ROUTER_BASE_URL}/v1/chat/completions",
+            headers=_router_headers(request),
+            content=await request.body(),
+        )
+        try:
+            upstream = await client.send(upstream_request, stream=True)
+        except Exception:
+            await client.aclose()
+            raise
+
+        async def body_iterator():
+            try:
+                async for chunk in upstream.aiter_raw():
+                    yield chunk
+            finally:
+                await upstream.aclose()
+                await client.aclose()
+
+        response_headers = {
+            name: value
+            for name, value in upstream.headers.items()
+            if name.lower() in {"content-type", "cache-control", "x-gta-request-id"}
+        }
+        return StreamingResponse(
+            body_iterator(),
+            status_code=upstream.status_code,
+            headers=response_headers,
+        )
+
+    @router.delete("/router/_gta/requests/{request_id}", include_in_schema=False)
+    async def proxy_cancel(request_id: str, request: Request) -> Response:
+        async with httpx.AsyncClient(timeout=10) as client:
+            upstream = await client.delete(
+                f"{ROUTER_BASE_URL}/_gta/requests/{request_id}",
+                headers=_router_headers(request),
+            )
+        return Response(
+            content=upstream.content,
+            status_code=upstream.status_code,
+            media_type=upstream.headers.get("content-type"),
+        )
 
     @router.get("/api/reviews/summary", include_in_schema=False)
     async def review_summary(request: Request) -> dict[str, object]:
