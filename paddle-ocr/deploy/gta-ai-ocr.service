@@ -7,7 +7,7 @@ After=network-online.target
 Type=simple
 WorkingDirectory=/opt/gta-ai/paddle-ocr
 Environment="GTA_AI_CONFIG_FILES=/opt/gta-ai/paddle-ocr/config/ocr.env,/opt/gta-ai/paddle-ocr/config/node.env"
-ExecStartPre=/usr/bin/install -d -m 0750 /opt/gta-ai/paddle-ocr/logs
+ExecStartPre=/usr/bin/install -d -o root -g ubuntu -m 0750 /opt/gta-ai/paddle-ocr/logs
 ExecStartPre=-/usr/bin/podman rm --force gta-ai-ocr
 ExecStart=/opt/gta-ai/paddle-ocr/deploy/run-ocr.sh
 ExecStop=-/usr/bin/podman stop --time 30 gta-ai-ocr
