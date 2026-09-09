@@ -7,6 +7,7 @@ After=network-online.target
 Type=simple
 WorkingDirectory=/opt/gta-ai/qwen-embedding
 Environment="GTA_AI_CONFIG_FILES=/opt/gta-ai/qwen-embedding/config/embedding.env,/opt/gta-ai/qwen-embedding/config/node.env"
+ExecStartPre=/usr/bin/install -d -m 0750 /opt/gta-ai/qwen-embedding/logs
 ExecStartPre=-/usr/bin/podman rm --force gta-ai-embedding
 ExecStart=/opt/gta-ai/qwen-embedding/deploy/run-embedding.sh
 ExecStop=-/usr/bin/podman stop --time 30 gta-ai-embedding
@@ -24,8 +25,8 @@ Nice=10
 OOMScoreAdjust=500
 TasksMax=1024
 LimitNOFILE=65536
-StandardOutput=journal
-StandardError=journal
+StandardOutput=append:/opt/gta-ai/qwen-embedding/logs/service.log
+StandardError=append:/opt/gta-ai/qwen-embedding/logs/service.log
 SyslogIdentifier=gta-ai-embedding
 
 [Install]
