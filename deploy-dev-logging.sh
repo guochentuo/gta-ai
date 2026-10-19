@@ -27,7 +27,9 @@ for svc in qwen-embedding paddle-ocr; do
     want=$(git show "$BASE:$svc/$f" | shasum -a 256 | cut -c1-64)
     if [[ $f == deploy/*.service ]]; then path=/etc/systemd/system/$(unit_of $svc).service; else path=/opt/gta-ai/$svc/$f; fi
     got=$(remote "sudo -n sha256sum $path 2>/dev/null | cut -c1-64" || true)
-    [[ -z "$got" || "$want" == "$got" ]] || { echo "已安装 $path 与基线不同，停止（未修改任何文件）"; exit 1; }
+    new_sum=$(git show "$NEW:$svc/$f" 2>/dev/null | shasum -a 256 | cut -c1-64)
+    # 允许已是新提交（重跑时前一服务已更新）；与基线、新提交都不同才视为他人改动
+    [[ -z "$got" || "$want" == "$got" || "$new_sum" == "$got" ]] || { echo "已安装 $path 与基线/新提交都不同，停止（未修改任何文件）"; exit 1; }
   done
 done
 OLD_OCR_IMAGE=$(remote "sudo -n grep -h '^OCR_IMAGE=' /opt/gta-ai/paddle-ocr/config/ocr.env /opt/gta-ai/paddle-ocr/config/node.env 2>/dev/null | head -1 | cut -d= -f2")
@@ -80,7 +82,12 @@ wait_health qwen-embedding || rollback qwen-embedding
 echo "embedding 健康"
 
 # 4. OCR：先构建新镜像（旧镜像保留），再换文件与镜像标签，重启验证
-remote "cd $STAGE/paddle-ocr && sudo -n podman build -q -t localhost/gta-ai-ocr:$TAG -f Containerfile ." || { echo "OCR 镜像构建失败，OCR 未改动"; exit 1; }
+# 开发节点无外网（pip 不可用）：在当前镜像上叠加新代码构建。仅当 requirements.txt 与基线一致时才这样做，
+# 依赖与系统层沿用旧镜像，旧镜像标签保留用于回退。
+git diff --quiet "$BASE" "$NEW" -- paddle-ocr/requirements.txt || { echo "requirements.txt 有变化，不能叠加构建，OCR 未改动"; exit 1; }
+printf 'FROM %s\nCOPY app.py /app/app.py\nCOPY service_logging.py /app/service_logging.py\nCOPY risk_regions.py /app/risk_regions.py\n' "$OLD_OCR_IMAGE" \
+  | remote "cat > $STAGE/paddle-ocr/Containerfile.overlay"
+remote "cd $STAGE/paddle-ocr && sudo -n podman build -q -t localhost/gta-ai-ocr:$TAG -f Containerfile.overlay ." || { echo "OCR 镜像构建失败，OCR 未改动"; exit 1; }
 install_files paddle-ocr $STAGE; deploy_env paddle-ocr
 remote "sudo -n sed -i 's#^OCR_IMAGE=.*#OCR_IMAGE=localhost/gta-ai-ocr:$TAG#' $OCR_IMAGE_FILE"
 remote "sudo -n systemctl restart gta-ai-ocr"
