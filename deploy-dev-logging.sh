@@ -33,7 +33,7 @@ done
 OLD_OCR_IMAGE=$(remote "sudo -n grep -h '^OCR_IMAGE=' /opt/gta-ai/paddle-ocr/config/ocr.env /opt/gta-ai/paddle-ocr/config/node.env 2>/dev/null | head -1 | cut -d= -f2")
 OCR_IMAGE_FILE=$(remote "sudo -n grep -l '^OCR_IMAGE=' /opt/gta-ai/paddle-ocr/config/ocr.env /opt/gta-ai/paddle-ocr/config/node.env 2>/dev/null | head -1")
 [[ -n "$OLD_OCR_IMAGE" && -n "$OCR_IMAGE_FILE" ]] || { echo "找不到 OCR_IMAGE，停止"; exit 1; }
-echo "当前 OCR_IMAGE=$OLD_OCR_IMAGE（$OCR_IMAGE_FILE），回退时恢复此值"
+echo "当前 OCR_IMAGE=${OLD_OCR_IMAGE}（${OCR_IMAGE_FILE}），回退时恢复此值"
 
 # 2. 暂存新提交的两个服务目录（只用于构建与复制）
 git archive "$NEW" qwen-embedding paddle-ocr | remote "rm -rf $STAGE && mkdir -p $STAGE && tar -xf - -C $STAGE"
@@ -85,6 +85,6 @@ install_files paddle-ocr $STAGE; deploy_env paddle-ocr
 remote "sudo -n sed -i 's#^OCR_IMAGE=.*#OCR_IMAGE=localhost/gta-ai-ocr:$TAG#' $OCR_IMAGE_FILE"
 remote "sudo -n systemctl restart gta-ai-ocr"
 wait_health paddle-ocr || rollback paddle-ocr
-echo "OCR 健康（镜像 localhost/gta-ai-ocr:$TAG；旧镜像 $OLD_OCR_IMAGE 保留）"
+echo "OCR 健康（镜像 localhost/gta-ai-ocr:${TAG}；旧镜像 $OLD_OCR_IMAGE 保留）"
 remote "rm -rf $STAGE"
-echo "完成。回退：恢复 OCR_IMAGE=$OLD_OCR_IMAGE，并以基线 $BASE 的文件重装两个服务后重启"
+echo "完成。回退：恢复 OCR_IMAGE=${OLD_OCR_IMAGE}，并以基线 $BASE 的文件重装两个服务后重启"
