@@ -10,8 +10,9 @@ NEW=$(git rev-parse --verify "${1:?新提交}^{commit}"); BASE=$(git rev-parse -
 TAG="dev-${NEW:0:7}"
 SSHC=(ssh -F "$HOME/.ssh/gta-servers.conf" room-2)
 STAGE=/tmp/gta-ai-stage-${NEW:0:7}
-declare -A UNIT=([qwen-embedding]=gta-ai-embedding [paddle-ocr]=gta-ai-ocr)
-declare -A HEALTH=([qwen-embedding]=http://192.168.80.2:18080/health [paddle-ocr]=http://192.168.80.2:18081/health)
+# macOS 自带 bash 3.2 无关联数组，用函数映射
+unit_of() { if [[ $1 == paddle-ocr ]]; then echo gta-ai-ocr; else echo gta-ai-embedding; fi; }
+health_of() { if [[ $1 == paddle-ocr ]]; then echo http://192.168.80.2:18081/health; else echo http://192.168.80.2:18080/health; fi; }
 FILES_ocr=(app.py service_logging.py Containerfile deploy/run-ocr.sh deploy/logrotate.conf)
 FILES_emb=(deploy/run-embedding.sh deploy/logrotate.conf)
 
@@ -21,10 +22,10 @@ remote() { "${SSHC[@]}" "$@"; }
 echo "新提交 $NEW  基线 $BASE  OCR 镜像标签 $TAG"
 # 1. 前置核对：已安装文件 == 基线
 for svc in qwen-embedding paddle-ocr; do
-  for f in $(files_of $svc) deploy/${UNIT[$svc]}.service; do
+  for f in $(files_of $svc) deploy/$(unit_of $svc).service; do
     git cat-file -e "$BASE:$svc/$f" 2>/dev/null || continue   # 基线中新文件（如 service_logging.py）不检查
     want=$(git show "$BASE:$svc/$f" | shasum -a 256 | cut -c1-64)
-    if [[ $f == deploy/*.service ]]; then path=/etc/systemd/system/${UNIT[$svc]}.service; else path=/opt/gta-ai/$svc/$f; fi
+    if [[ $f == deploy/*.service ]]; then path=/etc/systemd/system/$(unit_of $svc).service; else path=/opt/gta-ai/$svc/$f; fi
     got=$(remote "sudo -n sha256sum $path 2>/dev/null | cut -c1-64" || true)
     [[ -z "$got" || "$want" == "$got" ]] || { echo "已安装 $path 与基线不同，停止（未修改任何文件）"; exit 1; }
   done
@@ -48,14 +49,14 @@ install_files() {  # install_files <svc> <源目录或 git:<commit>>
     fi
   done
   remote "sudo -n chmod 0755 /opt/gta-ai/$svc/deploy/*.sh"
-  local unit=${UNIT[$svc]}
+  local unit; unit=$(unit_of $svc)
   if [[ $src == git:* ]]; then git show "${src#git:}:$svc/deploy/$unit.service" | remote "sudo -n install -o root -g root -m 0644 /dev/stdin /etc/systemd/system/$unit.service"
   else remote "sudo -n install -o root -g root -m 0644 $src/$svc/deploy/$unit.service /etc/systemd/system/$unit.service"; fi
   remote "sudo -n systemctl daemon-reload"
 }
 
 wait_health() {  # wait_health <svc>：最多 300 秒
-  for _ in $(seq 1 60); do remote "curl -fsS -o /dev/null -m 5 ${HEALTH[$1]}" && return 0; sleep 5; done; return 1
+  for _ in $(seq 1 60); do remote "curl -fsS -o /dev/null -m 5 $(health_of $1)" && return 0; sleep 5; done; return 1
 }
 
 rollback() {  # rollback <svc>
@@ -63,7 +64,7 @@ rollback() {  # rollback <svc>
   install_files $svc git:$BASE
   remote "sudo -n rm -f /opt/gta-ai/$svc/deploy.env"
   [[ $svc == paddle-ocr ]] && remote "sudo -n sed -i 's#^OCR_IMAGE=.*#OCR_IMAGE=$OLD_OCR_IMAGE#' $OCR_IMAGE_FILE"
-  remote "sudo -n systemctl restart ${UNIT[$svc]}"
+  remote "sudo -n systemctl restart $(unit_of $svc)"
   wait_health $svc && echo "$svc 已回退并恢复健康" || echo "$svc 回退后仍不健康，需要人工"
   exit 1
 }
