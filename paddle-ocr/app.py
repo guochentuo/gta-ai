@@ -5,6 +5,7 @@ import hashlib
 import heapq
 import importlib.metadata
 import io
+import logging
 import os
 import re
 import threading
@@ -13,7 +14,13 @@ from contextlib import asynccontextmanager, contextmanager
 from typing import Any
 
 import numpy as np
+import service_logging
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
 from paddleocr import PaddleOCR
 from PIL import Image, ImageOps, UnidentifiedImageError
 from risk_regions import detect_candidate_regions
@@ -29,6 +36,9 @@ MIN_SCORE = float(os.getenv("OCR_MIN_SCORE", "0.0"))
 MAX_BATCH_SIZE = int(os.getenv("OCR_MAX_BATCH_SIZE", "32"))
 
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+
+service_logging.configure(SERVICE_NAME)
+LOGGER = logging.getLogger("gta_ai.ocr")
 
 _engine: PaddleOCR | None = None
 
@@ -50,6 +60,7 @@ class PriorityInferenceGate:
     @contextmanager
     def hold(self, priority_header: str | None):
         ticket = object()
+        wait_started = time.perf_counter()
         with self._condition:
             self._sequence += 1
             heapq.heappush(
@@ -61,6 +72,9 @@ class PriorityInferenceGate:
             )
             heapq.heappop(self._waiting)
             self._active = True
+        service_logging.annotate(
+            queue_wait_ms=int((time.perf_counter() - wait_started) * 1000)
+        )
         try:
             yield
         finally:
@@ -347,11 +361,32 @@ async def lifespan(_: FastAPI):
         enable_mkldnn=True,
         cpu_threads=CPU_THREADS,
     )
+    LOGGER.info(
+        "service_started detection=%s recognition=%s", DETECTION_MODEL, RECOGNITION_MODEL,
+        extra={"event": "service_started", "result": "ok",
+               "fields": {"detection_model": DETECTION_MODEL,
+                          "recognition_model": RECOGNITION_MODEL,
+                          "version": SERVICE_VERSION}},
+    )
     yield
     _engine = None
 
 
 app = FastAPI(title=SERVICE_NAME, version=SERVICE_VERSION, lifespan=lifespan)
+app.add_middleware(service_logging.InferenceLogMiddleware)
+
+
+@app.exception_handler(HTTPException)
+async def _http_exception(request: Request, exc: HTTPException):
+    # 只为完成日志补充拒绝原因; 响应保持 FastAPI 默认格式。
+    service_logging.annotate(reason=str(exc.detail))
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception(request: Request, exc: RequestValidationError):
+    service_logging.annotate(reason="request_validation_error", error_count=len(exc.errors()))
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.get("/health")
@@ -377,6 +412,7 @@ def health() -> dict[str, Any]:
 
 @app.post("/v1/ocr")
 async def ocr(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
+    service_logging.annotate(batch_size=1)
     content = await file.read(MAX_IMAGE_BYTES + 1)
     image = decode_image(content)
     started = time.perf_counter()
@@ -386,6 +422,7 @@ async def ocr(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
         )
     )[0]
     elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+    service_logging.annotate(elapsed_ms=int(elapsed_ms), lines=len(lines))
     return {**ocr_payload(content, image, lines), "elapsed_ms": elapsed_ms}
 
 
@@ -393,6 +430,7 @@ async def ocr(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
 async def ocr_batch(
     request: Request, files: list[UploadFile] = File(...)
 ) -> dict[str, Any]:
+    service_logging.annotate(batch_size=len(files or []))
     if not files or len(files) > MAX_BATCH_SIZE:
         raise HTTPException(
             status_code=400,
@@ -405,6 +443,7 @@ async def ocr_batch(
         run_ocr_batch, images, request.headers.get("X-GTA-Priority")
     )
     elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+    service_logging.annotate(elapsed_ms=int(elapsed_ms))
     items = [
         {
             "index": index,
@@ -424,6 +463,7 @@ async def ocr_batch(
 async def risk_screen_batch(
     request: Request, files: list[UploadFile] = File(...)
 ) -> dict[str, Any]:
+    service_logging.annotate(batch_size=len(files or []))
     if not files or len(files) > MAX_BATCH_SIZE:
         raise HTTPException(
             status_code=400,
@@ -439,6 +479,7 @@ async def risk_screen_batch(
         request.headers.get("X-GTA-Priority"),
     )
     elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+    service_logging.annotate(elapsed_ms=int(elapsed_ms))
     return {
         "model": f"lightweight-region-detector+{DETECTION_MODEL}+{RECOGNITION_MODEL}",
         "count": len(items),

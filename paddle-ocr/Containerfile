@@ -23,6 +23,7 @@ RUN python -m pip install --no-cache-dir \
 
 COPY app.py /app/app.py
 COPY risk_regions.py /app/risk_regions.py
+COPY service_logging.py /app/service_logging.py
 
 WORKDIR /app
 ENTRYPOINT ["python", "-m", "uvicorn", "app:app"]

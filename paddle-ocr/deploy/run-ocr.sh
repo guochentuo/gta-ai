@@ -61,6 +61,10 @@ exec /usr/bin/podman run --rm \
   --env "OCR_MAX_IMAGE_PIXELS=$OCR_MAX_IMAGE_PIXELS" \
   --env "OCR_MIN_SCORE=$OCR_MIN_SCORE" \
   --env "OCR_MAX_BATCH_SIZE=$OCR_MAX_BATCH_SIZE" \
+  --env "GTA_ENV=${GTA_ENV:-unknown}" \
+  --env "GTA_NODE=${GTA_NODE:-$SERVICE_HOST}" \
+  --env "GTA_DEPLOY_SHA=${GTA_DEPLOY_SHA:-unknown}" \
+  --env "LOG_LEVEL=${LOG_LEVEL:-INFO}" \
   --volume "$OCR_DATA_DIR:$OCR_DATA_DIR:rw" \
   "$OCR_IMAGE" \
   --host "$SERVICE_HOST" \
@@ -69,3 +73,5 @@ exec /usr/bin/podman run --rm \
   --limit-concurrency 8 \
   --timeout-keep-alive 30 \
   --no-access-log
+# --no-access-log：访问记录由应用内 InferenceLogMiddleware 以 JSON 输出（每请求一条 model_infer，
+# 4xx WARN、5xx/异常 ERROR+堆栈，/health 成功只记 DEBUG），避免同一请求两行。
