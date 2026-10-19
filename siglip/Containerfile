@@ -16,6 +16,7 @@ RUN python -m pip install --no-cache-dir \
     && python -m pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY app.py /app/app.py
+COPY service_logging.py /app/service_logging.py
 
 WORKDIR /app
 ENTRYPOINT ["python", "-m", "uvicorn", "app:app"]

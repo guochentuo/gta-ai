@@ -6,6 +6,7 @@ import heapq
 import importlib.metadata
 import io
 import json
+import logging
 import math
 import os
 import threading
@@ -13,9 +14,15 @@ import time
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any
 
+import service_logging
 import torch
 import torch.nn.functional as functional
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 from transformers import AutoModel, AutoProcessor
@@ -40,6 +47,9 @@ MAX_EXCLUDED_PATCH_RATIO = 0.40
 
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
+service_logging.configure(SERVICE_NAME)
+LOGGER = logging.getLogger("gta_ai.siglip")
+
 _model: Any = None
 _processor: Any = None
 _dimensions = 0
@@ -62,6 +72,7 @@ class PriorityInferenceGate:
     @contextmanager
     def hold(self, priority_header: str | None):
         ticket = object()
+        wait_started = time.perf_counter()
         with self._condition:
             self._sequence += 1
             heapq.heappush(
@@ -73,6 +84,9 @@ class PriorityInferenceGate:
             )
             heapq.heappop(self._waiting)
             self._active = True
+        service_logging.annotate(
+            queue_wait_ms=int((time.perf_counter() - wait_started) * 1000)
+        )
         try:
             yield
         finally:
@@ -268,6 +282,12 @@ async def lifespan(_: FastAPI):
     ).eval()
     probe = embed_texts(["health probe"])
     _dimensions = len(probe[0])
+    LOGGER.info(
+        "service_started model=%s dimensions=%d", MODEL_ID, _dimensions,
+        extra={"event": "service_started", "result": "ok",
+               "fields": {"model": MODEL_ID, "revision": MODEL_REVISION,
+                          "dimensions": _dimensions, "version": SERVICE_VERSION}},
+    )
     yield
     _model = None
     _processor = None
@@ -275,6 +295,20 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=SERVICE_NAME, version=SERVICE_VERSION, lifespan=lifespan)
+app.add_middleware(service_logging.InferenceLogMiddleware)
+
+
+@app.exception_handler(HTTPException)
+async def _http_exception(request: Request, exc: HTTPException):
+    # 只为完成日志补充拒绝原因; 响应保持 FastAPI 默认格式。
+    service_logging.annotate(reason=str(exc.detail))
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception(request: Request, exc: RequestValidationError):
+    service_logging.annotate(reason="request_validation_error", error_count=len(exc.errors()))
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.get("/health")
@@ -304,6 +338,7 @@ async def image_embeddings(
     files: list[UploadFile] = File(...),
     subtitle_masks: str | None = Form(default=None),
 ) -> dict[str, Any]:
+    service_logging.annotate(batch_size=len(files or []), kind="image")
     if not files or len(files) > MAX_IMAGE_BATCH:
         raise HTTPException(status_code=400, detail="图片批次大小不符合限制")
 
@@ -316,6 +351,7 @@ async def image_embeddings(
         embed_images, images, masks, request.headers.get("X-GTA-Priority")
     )
     elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+    service_logging.annotate(elapsed_ms=int(elapsed_ms), input_policy=input_policy)
     return {
         "object": "list",
         "model": MODEL_ID,
@@ -348,6 +384,9 @@ async def text_embeddings(
 ) -> dict[str, Any]:
     texts = [payload.input] if isinstance(payload.input, str) else payload.input
     texts = [text.strip() for text in texts]
+    # 只记批大小与长度; 不记文本内容。
+    service_logging.annotate(batch_size=len(texts), kind="text",
+                             text_chars=sum(len(text) for text in texts))
     if not texts or len(texts) > MAX_TEXT_BATCH or any(not text for text in texts):
         raise HTTPException(status_code=400, detail="文本批次大小或内容不符合限制")
 
@@ -356,6 +395,7 @@ async def text_embeddings(
         embed_texts, texts, request.headers.get("X-GTA-Priority")
     )
     elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+    service_logging.annotate(elapsed_ms=int(elapsed_ms))
     return {
         "object": "list",
         "model": MODEL_ID,

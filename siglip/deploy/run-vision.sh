@@ -63,6 +63,10 @@ exec /usr/bin/podman run --rm \
   --env "VISION_MAX_IMAGE_PIXELS=$VISION_MAX_IMAGE_PIXELS" \
   --env "VISION_MAX_IMAGE_BATCH=$VISION_MAX_IMAGE_BATCH" \
   --env "VISION_MAX_TEXT_BATCH=$VISION_MAX_TEXT_BATCH" \
+  --env "GTA_ENV=${GTA_ENV:-unknown}" \
+  --env "GTA_NODE=${GTA_NODE:-$SERVICE_HOST}" \
+  --env "GTA_DEPLOY_SHA=${GTA_DEPLOY_SHA:-unknown}" \
+  --env "LOG_LEVEL=${LOG_LEVEL:-INFO}" \
   --volume "$VISION_DATA_DIR:$VISION_DATA_DIR:rw" \
   "$VISION_IMAGE" \
   --host "$SERVICE_HOST" \
@@ -71,3 +75,5 @@ exec /usr/bin/podman run --rm \
   --limit-concurrency 4 \
   --timeout-keep-alive 30 \
   --no-access-log
+# --no-access-log：访问记录由应用内 InferenceLogMiddleware 以 JSON 输出（每请求一条 model_infer，
+# 4xx WARN、5xx/异常 ERROR+堆栈，/health 成功只记 DEBUG），避免同一请求两行。

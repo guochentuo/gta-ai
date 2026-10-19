@@ -7,6 +7,8 @@ After=network-online.target
 Type=simple
 WorkingDirectory=/opt/gta-ai/siglip
 Environment="GTA_AI_CONFIG_FILES=/opt/gta-ai/siglip/config/vision.env,/opt/gta-ai/siglip/config/node.env"
+# 部署注入的日志标识（GTA_ENV/GTA_NODE/GTA_DEPLOY_SHA/LOG_LEVEL），文件不存在时忽略。
+EnvironmentFile=-/opt/gta-ai/siglip/deploy.env
 ExecStartPre=-/usr/bin/podman rm --force gta-ai-image-embedding
 ExecStart=/opt/gta-ai/siglip/deploy/run-vision.sh
 ExecStop=-/usr/bin/podman stop --time 30 gta-ai-image-embedding

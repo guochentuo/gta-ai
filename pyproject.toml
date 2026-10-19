@@ -25,6 +25,8 @@ addopts = "-q"
 asyncio_mode = "auto"
 testpaths = [
   "qwen-llm/tests",
+  "siglip/tests",
+  "paddle-ocr/tests",
 ]
 pythonpath = [
   ".",
@@ -42,6 +44,9 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 "faster-whisper/app.py" = ["RUF003"]
 "siglip/app.py" = ["B008", "RUF002"]
 "paddle-ocr/app.py" = ["B008", "RUF002", "RUF003"]
+"*/service_logging.py" = ["RUF001", "RUF002", "RUF003"]
+"siglip/tests/*.py" = ["RUF001", "RUF002", "RUF003"]
+"paddle-ocr/tests/*.py" = ["RUF001", "RUF002", "RUF003"]
 "qwen-llm/router/app.py" = ["RUF001", "RUF002", "RUF003"]
 "qwen-llm/router/services/pricing_service.py" = ["RUF001", "RUF002", "RUF003"]
 "qwen-llm/router/services/context_classification_service.py" = ["RUF001", "RUF002", "RUF003"]
