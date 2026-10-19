@@ -46,7 +46,13 @@ gta-ai/
 └── README.md
 ```
 
-Embedding和OCR将运行日志写入各自的logs/service.log，由deploy/logrotate.conf限制保留量；其他CPU模型使用journald。27B Router和vLLM
+Embedding和OCR将运行日志写入各自的logs/service.log，由deploy/logrotate.conf限制保留量（需安装到/etc/logrotate.d）；
+其他CPU模型使用journald。OCR与SigLIP应用日志为JSON行（项目内`service_logging.py`，字段与GTA统一日志一致）：
+每个推理请求一条`event=model_infer`（duration_ms、result、status、batch_size、queue_wait_ms，
+请求带`X-GTA-Task-ID`/`X-Request-Id`/`X-Trace-Id`时写入task_id/trace_id），4xx记WARN，5xx/异常记ERROR带堆栈，
+每300秒一条`event=log_heartbeat`。Embedding（TEI）以`--json-output`输出JSON行，心跳由`deploy/run-embedding.sh`
+的后台循环写入同一日志。env/node/deploy_sha取自部署注入的`GTA_ENV`/`GTA_NODE`/`GTA_DEPLOY_SHA`
+（单元可选读取`/opt/gta-ai/<项目>/deploy.env`），缺失写`unknown`。27B Router和vLLM
 使用`qwen-llm/router/runtime_logging.py`统一分流到简洁控制台、本地滚动文件和Kafka。
 GPU运行时版本、CDI配置和GPU验证脚本归属`qwen-llm/deploy/`。模型权重和缓存不进入Git，部署时放在
 对应的`/opt/gta-ai/<项目名>/data`；27B权重继续使用
