@@ -9,6 +9,8 @@ WorkingDirectory=/opt/gta-ai/qwen-embedding
 Environment="GTA_AI_CONFIG_FILES=/opt/gta-ai/qwen-embedding/config/embedding.env,/opt/gta-ai/qwen-embedding/config/node.env"
 # 部署注入的日志标识（GTA_ENV/GTA_NODE/GTA_DEPLOY_SHA/LOG_LEVEL），文件不存在时忽略。
 EnvironmentFile=-/opt/gta-ai/qwen-embedding/deploy.env
+# 运行时区显式 UTC（服务器统一 UTC）
+Environment=TZ=UTC
 ExecStartPre=/usr/bin/install -d -o root -g ubuntu -m 0750 /opt/gta-ai/qwen-embedding/logs
 ExecStartPre=-/usr/bin/podman rm --force gta-ai-embedding
 ExecStart=/opt/gta-ai/qwen-embedding/deploy/run-embedding.sh
